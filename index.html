@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Аномалия: Три Пути — онлайн</title>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+/* ===== БЛОК 1. ВНЕШНИЙ ВИД (CSS) =====
+   Цвета лежат в переменных (--bg, --pn...), поэтому игра сама
+   подстраивается под светлую и тёмную тему телефона. */
+:root{--bg:#f1efe9;--pn:#fff;--tx:#1b1b1f;--ln:#d4d0c6;--bt:#e9e6dd;
+ box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b0d12;--pn:#161a22;--tx:#e9e9ef;--ln:#2a2f3b;--bt:#222735}}
+:root[data-theme="dark"]{--bg:#0b0d12;--pn:#161a22;--tx:#e9e9ef;--ln:#2a2f3b;--bt:#222735}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:14px system-ui,sans-serif;user-select:none}
+#app{display:flex;flex-direction:column;align-items:center;height:100%}
+#hud{width:100%;box-sizing:border-box;min-height:42px;padding:6px 10px;background:var(--pn);border-bottom:1px solid var(--ln);font-size:12px}
+canvas{background:#10131a;touch-action:none}  /* touch-action: страница не прокручивается при игре */
+#pn{width:100%;box-sizing:border-box;display:flex;gap:6px;padding:6px;background:var(--pn);border-top:1px solid var(--ln)}
+#buy{flex:1;display:flex;gap:6px}
+#buy button{flex:1}
+button{font:inherit;color:var(--tx);background:var(--bt);border:1px solid var(--ln);border-radius:10px;padding:8px 6px}
+button:disabled{opacity:.4}
+#ov{position:fixed;inset:0;background:rgba(8,10,14,.92);display:flex;align-items:center;justify-content:center;overflow:auto}
+.box{max-width:420px;padding:16px;color:#e9e9ef}
+.box h2{margin:0 0 8px}.box p{font-size:13px;opacity:.85}
+.fc{display:block;width:100%;margin:8px 0;text-align:left;border-width:2px;background:#161a22;color:#e9e9ef}
+</style>
+</head>
+<body>
+<!-- ===== БЛОК 2. КАРКАС СТРАНИЦЫ (HTML) =====
+     hud = полоса сверху (ресурсы, время); cv = поле боя;
+     buy = кнопки найма; all = «Все войска»; ov = меню и экран итогов -->
+<div id="app">
+ <div id="hud"></div>
+ <canvas id="cv"></canvas>
+ <div id="pn"><div id="buy"></div><button id="fuse" style="display:none">Сращивание</button><button id="all">Все войска</button></div>
+</div>
+<div id="ov"></div>
+
+<script>
+/* ===== БЛОК 3. ДАННЫЕ ФРАКЦИЙ =====
+   Здесь живёт весь баланс. Меняй числа и смотри, как меняется игра.
+   c = цвет; start = стартовый ресурс; base = доход от базы в секунду;
+   node = доход за каждую захваченную точку; curve(t) = множитель дохода
+   от времени t (в секундах) — именно он делает «окна силы»:
+   техно растёт к концу, био падает, маги не зависят от времени.
+   u = список юнитов: cost = цена, hp = здоровье, dmg = урон за удар,
+   range = дальность, speed = скорость, rate = секунд между ударами.
+   Особенности: count = сколько юнитов за раз, zap = оглушение (сек), hack = угон вражеского юнита на N сек, grow = секунд «вызревания» в коконе, ritual = только через ритуал,
+   splash = радиус урона по площади, life = время жизни (сек). */
+const F={
+ techno:{n:'Нео-Сема',c:'#38bdf8',res:'Энергия',start:100,base:5,node:3,
+  curve:t=>Math.min(2.2,.7+t/150),
+  info:'Слабый старт, но доход растёт с каждой минутой. Хакеры угоняют вражеских юнитов на 10 с.',
+  u:[{n:'Дрон',cost:25,hp:40,dmg:6,range:110,speed:75,rate:.8},
+     {n:'Киборг',cost:55,hp:100,dmg:12,range:120,speed:60,rate:1},
+     {n:'Хакер',cost:80,hp:60,dmg:4,range:150,speed:60,rate:5,hack:10}]},
+ bio:{n:'Био-Генезис',c:'#84cc16',res:'Биомасса',start:160,base:6,node:2,regen:3,grow:3,
+  curve:t=>Math.max(.7,1.4-t/300),
+  info:'Дешёвый рой, самолечение, юниты вызревают в коконах. Кнопка «Сращивание» (выбери двоих) делает гибрида. Доход падает — дави рано.',
+  u:[{n:'Рой ×2',cost:20,count:2,hp:30,dmg:5,range:16,speed:115,rate:.7},
+     {n:'Хищник',cost:45,hp:90,dmg:12,range:18,speed:100,rate:.9},
+     {n:'Бугай',cost:90,hp:260,dmg:20,range:20,speed:55,rate:1.1}]},
+ magic:{n:'Адепты Астрала',c:'#c084fc',res:'Эссенция',start:120,base:2,node:6,
+  curve:()=>1,
+  info:'Дух призывается ритуалом: поставь Послушника на свою точку и жми «Дух»: 5 с он колдует (убьют — сорвано). Доход почти только с точек.',
+  u:[{n:'Послушник',cost:40,hp:55,dmg:8,range:100,speed:70,rate:1},
+     {n:'Элементаль',cost:90,hp:150,dmg:16,range:70,speed:55,rate:1.2,splash:45},
+     {n:'Дух 30с',cost:120,hp:90,dmg:34,range:130,speed:85,rate:1,life:30,ritual:1}]}
+};
+
+/* ===== БЛОК 4. ПЕРЕМЕННЫЕ ИГРЫ =====
+   W,H = размер поля; P = телефон в вертикальном положении;
+   units = все бойцы и обе базы (индексы 0 и 1 — базы игрока и бота);
+   nodes = точки силы; fx = короткие эффекты (выстрелы, метки);
+   res = ресурс [игрок, бот]; fac = фракции [игрок, бот];
+   core = сколько секунд каждый держит Ядро; running = идёт ли бой. */
+const $=id=>document.getElementById(id),cv=$('cv'),g=cv.getContext('2d');
+let W,H,P,units,nodes,fx,res,fac,time,core,running=false,bot,cat,diff=1,ttl='',hint='',hintT=0;
+/* Онлайн: online = идёт ли матч по сети; me = моя команда (0 хозяин, 1 гость); peer/conn = связь;
+   mode = что выбирает игрок в меню (solo/host/join); uid = счётчик номеров юнитов;
+   selIds = номера выбранных мной юнитов (нужны гостю). */
+let online=0,me=0,peer,conn,mode='solo',uid=0,snapT=0;const selIds=new Set();
+const guest=()=>online&&me===1;                                   // я — гость?
+const send=m=>{try{conn&&conn.open&&conn.send(m)}catch(e){}};     // отправить сообщение сопернику
+const say=s=>{hint=s;hintT=4};   // say(): короткое сообщение на поле на 4 секунды
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const fmt=s=>(s/60|0)+':'+String(s%60|0).padStart(2,'0');
+
+/* ===== БЛОК 5. МЕНЮ И КОНЕЦ ИГРЫ =====
+   Показывает экран выбора фракции. После боя вызывается снова с итогом. */
+function menu(title){
+ if(title!==undefined)ttl=title;
+ $('ov').style.display='flex';
+ $('ov').innerHTML='<div class="box"><h2>'+(ttl||'Аномалия: Три Пути')+'</h2>'+
+ '<p>Бой против бота или онлайн 1v1 с другом. Нажми на своего бойца — он выберется, или протяни палец по полю — рамка выберет всех внутри. Нажми на землю — пойдёт туда, на врага — атакует. '+
+ 'Стой на точках, чтобы захватить: они дают ресурс. Удержи Ядро в центре 180 секунд или разрушь базу врага. Каждые 2,5 минуты — катаклизм.</p>'+
+ '<p>Сложность бота: '+['Лёгкая','Нормальная','Сложная'].map((n,i)=>'<button onclick="diff='+i+';menu()" style="padding:6px 10px;'+(diff==i?'border:2px solid #ffd54a':'')+'">'+n+'</button>').join(' ')+'</p>'+
+ '<p>Онлайн 1v1: <button onclick="setMode(\'host\')">Создать комнату</button> <button onclick="setMode(\'join\')">Войти по коду</button></p>'+
+ (mode!=='solo'?'<p><b>'+(mode=='host'?'Создаёшь комнату':'Входишь в комнату '+joinCode)+' — выбери фракцию</b> <button onclick="mode=\'solo\';menu()">отмена</button></p>':'')+
+ Object.keys(F).map(k=>'<button class="fc" style="border-color:'+F[k].c+'" onclick="pick(\''+k+'\')"><b>'+F[k].n+'</b><br>'+F[k].info+'</button>').join('')+'</div>';
+}
+function end(win,why){running=false;mode='solo';if(online){online=0;setTimeout(()=>{try{peer.destroy()}catch(e){}peer=conn=null},1500)}menu((win?'ПОБЕДА! ':'ПОРАЖЕНИЕ. ')+why+' ['+F[fac[0]].n+' vs '+F[fac[1]].n+', '+fmt(time)+']')}
+
+/* ===== БЛОК 6. СТАРТ НОВОЙ ИГРЫ =====
+   Выбирает фракцию бота (любая, кроме твоей), создаёт карту,
+   две базы и 5 точек (4 боковые + Ядро в центре).
+   pos(a,b) переводит «доли карты» в пиксели, а на вертикальном
+   телефоне поворачивает карту: твоя база внизу, вражеская вверху. */
+function start(fp,fp2){
+ P=innerHeight>innerWidth;W=P?540:960;H=P?800:560;cv.width=W;cv.height=H;
+ const others=Object.keys(F).filter(k=>k!=fp);
+ fac=[fp,fp2||others[Math.random()*2|0]];
+ res=[F[fp].start,F[fac[1]].start];
+ time=0;core=[0,0];fx=[];units=[];bot={buy:3,order:5};cat=150;hintT=0;me=0;uid=0;snapT=0;
+ const pos=(a,b)=>P?{x:b*W,y:(1-a)*H}:{x:a*W,y:b*H};
+ let p=pos(.08,.5),q=pos(.92,.5);
+ units.push(mk(0,p.x,p.y,{hp:2000,dmg:14,range:150,speed:0,rate:1},{r:28,base:1}));
+ units.push(mk(1,q.x,q.y,{hp:2000,dmg:14,range:150,speed:0,rate:1},{r:28,base:1}));
+ nodes=[[.31,.25],[.31,.75],[.69,.25],[.69,.75],[.5,.5]].map((a,i)=>{
+  const s=pos(a[0],a[1]);return{x:s.x,y:s.y,r:i==4?44:32,o:null,p:0,core:i==4}});
+ // кнопки найма юнитов твоей фракции
+ $('buy').innerHTML='';
+ mkBtns(fp);
+ $('ov').style.display='none';running=true;ui();fit();
+}
+/* mkBtns(): рисует кнопки найма для фракции fp. act(i): нажата кнопка номер i —
+   гость отправляет приказ хозяину, остальные выполняют сразу. */
+function mkBtns(fp){
+ $('buy').innerHTML='';
+ F[fp].u.forEach((d,i)=>{const b=document.createElement('button');
+  b.innerHTML='<b>'+d.n+'</b><br>'+d.cost;b.onclick=()=>act(i);$('buy').appendChild(b)});
+ $('fuse').style.display=fp=='bio'?'':'none';   // кнопка «Сращивание» только у био
+}
+function act(i){
+ if(guest()){send({t:'b',i});return}
+ const d=F[fac[me]].u[i];d.ritual?ritual(me,d):buy(me,d);
+}
+/* Подгоняет размер поля под экран, сохраняя пропорции */
+function fit(){
+ if(!W)return;
+ const aw=innerWidth,ah=innerHeight-$('hud').offsetHeight-$('pn').offsetHeight-8;
+ const s=Math.min(aw/W,ah/H);cv.style.width=W*s+'px';cv.style.height=H*s+'px';
+}
+addEventListener('resize',fit);
+
+/* ===== БЛОК 7. СОЗДАНИЕ ЮНИТОВ И НАЙМ =====
+   mk() собирает бойца из «чертежа» d и стартовых полей:
+   cd = таймер перезарядки, mx/my = точка, куда он идёт,
+   tgt = цель приказа, stun = сколько секунд оглушён, sel = выбран ли. */
+const mk=(team,x,y,d,extra)=>({...d,id:++uid,team,f:fac[team],x,y,r:9,max:d.hp,cd:0,mx:null,my:null,tgt:null,stun:0,sel:false,...extra});
+/* buy(): списывает ресурс и ставит бойцов рядом со своей базой */
+function buy(t,d){
+ if(res[t]<d.cost)return;res[t]-=d.cost;
+ const b=units[t];
+ for(let i=0;i<(d.count||1);i++){
+  const k=rnd(40,70),s=rnd(-40,40);
+  units.push(mk(t,P?b.x+s:b.x+(t?-k:k),P?b.y+(t?k:-k):b.y+s,d,{gr:d.ritual?5:F[fac[t]].grow||0})); // gr = секунд в коконе
+ }
+}
+
+/* ===== БЛОК 7б. СПОСОБНОСТИ ФРАКЦИЙ =====
+   ritual() — МАГИ: выбранный Послушник на ТВОЕЙ точке силы колдует 5 секунд (rit) и стоит на месте.
+     Убьют его — ритуал сорван, ресурс потерян. Дочитал — появляется Дух (см. блок 9).
+   fuse() — БИО: два выбранных юнита сливаются в гибрида: здоровье почти сумма, урон ×1.3.
+     Гибрид повторно не сращивается (fz).
+   cataclysm() — случайное событие для всех, раз в 150 секунд. */
+function ritual(t,d){
+ if(res[t]<d.cost)return;
+ const a=units.find(u=>u.team===t&&u.hp>0&&u.n==='Послушник'&&!u.rit&&nodes.some(n=>n.o===t&&dist(u,n)<n.r+8));
+ if(!a){say('Нужен Послушник на своей точке');return}
+ res[t]-=d.cost;a.rit=5;a.rd=d;a.mx=null;a.tgt=null;
+}
+function fuse(t=me){
+ if(guest()){send({t:'f'});return}
+ if(!running||fac[t]!=='bio')return;
+ const ok=u=>u.team===t&&!u.base&&!u.fz&&!(u.gr>0)&&u.hp>0;   // кого можно сращивать
+ let s=units.filter(u=>ok(u)&&u.sel);
+ if(s.length<2)s=units.filter(ok);                          // выбрано меньше двух — берём всех своих
+ if(s.length<2){say('Нужно минимум два юнита');return}
+ let a=s[0],b=s[1],bd=1e9;
+ for(const i of s)for(const j of s)if(i!==j&&dist(i,j)<bd){bd=dist(i,j);a=i;b=j}   // сращиваем ближайшую пару
+ units=units.filter(u=>u!==a&&u!==b);
+ units.push(mk(t,(a.x+b.x)/2,(a.y+b.y)/2,{hp:(a.hp+b.hp)*.9,dmg:Math.max(a.dmg,b.dmg)*1.3,range:Math.max(a.range,b.range),speed:(a.speed+b.speed)/2,rate:Math.min(a.rate,b.rate)},{r:13,fz:1,sel:t===me}));
+}
+function cataclysm(){
+ const e=Math.random()*3|0;
+ if(e===0){units.forEach(u=>{if(!u.base)u.hp-=u.max*.2});say('Кислотный дождь: −20% здоровья')}
+ else if(e===1){units.forEach(u=>u.stun=2);say('Кибершторм: все оглушены на 2 с')}
+ else{nodes.forEach(n=>{n.o=null;n.p=0});say('Астральный разлом: точки сброшены')}
+}
+
+/* ===== БЛОК 8. БОЙ И ДВИЖЕНИЕ ===== */
+/* nearest(): ближайший враг в пределах reach (или null) */
+function nearest(u,reach){
+ let best=null,bd=1e9;
+ for(const e of units){
+  if(e.team===u.team||e.hp<=0)continue;
+  const d=dist(u,e)-e.r;
+  if(d<reach&&d<bd){best=e;bd=d}
+ }
+ return best;
+}
+/* step(): двигает юнита к точке (x,y); возвращает оставшееся расстояние */
+function step(u,x,y,dt){
+ const d=Math.hypot(x-u.x,y-u.y);if(d<2)return 0;
+ const m=Math.min(d,u.speed*dt);u.x+=(x-u.x)/d*m;u.y+=(y-u.y)/d*m;return d-m;
+}
+/* hit(): удар. Урон цели, при splash — урон по соседям (60%),
+   при zap — оглушение. Добавляет линию-вспышку выстрела. */
+function hit(u,t){
+ u.cd=u.rate;t.hp-=u.dmg;
+ if(u.splash)units.forEach(e=>{if(e.team!==u.team&&e!==t&&dist(e,t)<u.splash)e.hp-=u.dmg*.6});
+ if(u.zap)t.stun=u.zap;
+ if(u.hack&&!t.base&&!t.hj){t.hj=u.hack;t.team=u.team;t.tgt=null;t.mx=null;t.sel=false} // ВЗЛОМ: цель временно переходит на твою сторону
+ fx.push({x:u.x,y:u.y,x2:t.x,y2:t.y,ttl:.15,c:F[u.f].c});
+}
+/* income(): доход команды t в секунду = (база + точки×бонус) × кривая времени */
+function income(t){
+ const f=F[fac[t]],k=nodes.filter(n=>n.o===t).length;
+ return(f.base+k*f.node)*f.curve(time)*(t&&!online?[.8,1,1.3][diff]:1); // у бота доход зависит от сложности
+}
+
+/* ===== БЛОК 9. ГЛАВНЫЙ ШАГ ИГРЫ =====
+   Вызывается ~60 раз в секунду. dt = сколько секунд прошло с прошлого кадра. */
+function update(dt){
+ hintT-=dt;
+ if(time>=cat){cat+=150;cataclysm()}                 // катаклизм раз в 150 с
+ time+=dt;
+ res[0]+=income(0)*dt;res[1]+=income(1)*dt;          // 1) доход
+
+ nodes.forEach(n=>{                                   // 2) захват точек
+  let a=0,b=0;
+  units.forEach(u=>{if(!u.base&&u.hp>0&&dist(u,n)<n.r+8)u.team?b++:a++});
+  if(a&&!b)n.p=Math.min(1,n.p+dt*.12*Math.min(a,4)); // p от -1 (бот) до +1 (ты)
+  else if(b&&!a)n.p=Math.max(-1,n.p-dt*.12*Math.min(b,4));
+  if(n.o===0&&n.p<=0)n.o=null;
+  if(n.o===1&&n.p>=0)n.o=null;
+  if(n.p>=1)n.o=0;if(n.p<=-1)n.o=1;
+ });
+ const c=nodes[4];                                    // 3) таймер Ядра
+ core[0]=c.o===0?core[0]+dt:0;core[1]=c.o===1?core[1]+dt:0;
+
+ units.forEach(u=>{                                   // 4) поведение каждого юнита
+  if(u.hp<=0)return;
+  if(u.hj!=null&&(u.hj-=dt)<=0){u.hj=null;u.team=1-u.team;u.tgt=null;u.mx=null} // взлом кончился — юнит возвращается
+  if(u.life!=null&&(u.life-=dt)<=0)u.hp=0;            // духи исчезают по таймеру
+  if(F[u.f].regen&&!u.base)u.hp=Math.min(u.max,u.hp+F[u.f].regen*dt); // самолечение био
+  if(u.gr>0){u.gr-=dt;return}                         // кокон: юнит ещё вызревает
+  if(u.rit>0){if((u.rit-=dt)<=0)units.push(mk(u.team,u.x+14,u.y,u.rd,{gr:0}));return} // ритуал: Дух появится, когда жрец дочитает
+  if(u.stun>0){u.stun-=dt;return}                     // оглушённый стоит
+  u.cd-=dt;
+  // цель: приказ игрока важнее; иначе ближайший враг (стоящий юнит замечает дальше)
+  let t=u.tgt&&u.tgt.hp>0?u.tgt:(u.tgt=null,nearest(u,u.range+(u.mx==null?80:0)));
+  if(t&&dist(u,t)-t.r<=u.range){if(u.cd<=0)hit(u,t)}  // в зоне удара — бьём
+  else if(t&&u.speed&&u.mx==null)step(u,t.x,t.y,dt);  // иначе догоняем
+  if(u.mx!=null&&u.speed&&step(u,u.mx,u.my,dt)<3)u.mx=null; // идём по приказу
+ });
+ units=units.filter(u=>u.hp>0||u.base);               // 5) убираем погибших (базы остаются)
+ fx=fx.filter(f=>(f.ttl-=dt)>0);
+
+ // 6) БОТ: каждые 2.5 с покупает, каждые 5 с раздаёт приказы
+ if(!online){bot.buy-=dt;bot.order-=dt;
+ if(bot.buy<=0){bot.buy=[3.5,2.5,1.8][diff];
+  const o=F[fac[1]].u.filter(d=>d.cost<=res[1]);
+  if(o.length)buy(1,Math.random()<.6?o[o.length-1]:o[Math.random()*o.length|0]);
+ }
+ if(bot.order<=0){bot.order=5;
+  const army=units.filter(u=>u.team===1&&!u.base);
+  const th=units.find(e=>e.team===0&&!e.base&&e.hp>0&&dist(e,units[1])<260); // враг у базы бота?
+  army.forEach(u=>{
+   if(th){u.mx=th.x;u.my=th.y;return}   // защита: все бегут к врагу у базы
+   if(u.mx!=null)return;
+   if(army.length>=[10,8,6][diff]){u.mx=units[0].x;u.my=units[0].y}   // армия большая — штурм базы
+   else{                                                  // иначе — к ближайшей чужой точке
+    const n=nodes.filter(n=>n.o!==1).sort((a,b)=>dist(u,a)-dist(u,b))[0];
+    if(n){u.mx=n.x+rnd(-15,15);u.my=n.y+rnd(-15,15)}
+   }
+  });
+ }
+
+ }   // конец блока бота (в онлайне бота нет)
+ // 7) УСЛОВИЯ ПОБЕДЫ: bw/cw = номер победившей команды (или -1)
+ const bw=units[0].hp<=0?1:units[1].hp<=0?0:-1,cw=core[0]>=180?0:core[1]>=180?1:-1;
+ if(bw>=0||cw>=0)finish(bw>=0?bw:cw,bw>=0?'База уничтожена.':'Вознесение: Ядро удержано.');
+ if(online)snap();   // 8) онлайн: хозяин рассылает состояние гостю
+}
+
+/* ===== БЛОК 10. РИСОВАНИЕ =====
+   Каждый кадр поле стирается и рисуется заново: сетка, точки, юниты, эффекты.
+   Форма юнита = фракция: квадрат — техно, круг — био, треугольник — маги. */
+function draw(){
+ g.fillStyle='#10131a';g.fillRect(0,0,W,H);
+ g.strokeStyle='#1a1f2c';g.lineWidth=1;
+ for(let x=0;x<W;x+=60){g.beginPath();g.moveTo(x,0);g.lineTo(x,H);g.stroke()}
+ for(let y=0;y<H;y+=60){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}
+ if(hintT>0){g.fillStyle='#ffd54a';g.font='14px sans-serif';g.textAlign='center';g.fillText(hint,W/2,24)} // подсказки и катаклизмы
+ if(dr&&dr.on){g.strokeStyle='#ffd54a';g.lineWidth=1;g.strokeRect(dr.x,dr.y,dr.x2-dr.x,dr.y2-dr.y)} // рамка выделения
+ nodes.forEach(n=>{                                   // точки силы
+  const col=n.o===null?'#777777':F[fac[n.o]].c;
+  g.beginPath();g.arc(n.x,n.y,n.r,0,7);g.fillStyle=col+'33';g.fill();
+  g.strokeStyle=col;g.lineWidth=3;g.stroke();
+  g.beginPath();g.arc(n.x,n.y,n.r-6,-1.57,-1.57+Math.abs(n.p)*6.28); // дуга захвата
+  g.strokeStyle=n.p>0?F[fac[0]].c:F[fac[1]].c;g.stroke();
+  if(n.core){g.fillStyle='#fff';g.font='12px sans-serif';g.textAlign='center';g.fillText('ЯДРО',n.x,n.y+4)}
+ });
+ units.forEach(u=>{                                   // юниты и базы
+  if(u.hp<=0)return;
+  const c=F[u.f].c,r=u.r;
+  g.beginPath();
+  if(u.base||u.f=='techno')g.rect(u.x-r,u.y-r,r*2,r*2);
+  else if(u.f=='bio')g.arc(u.x,u.y,r,0,7);
+  else{g.moveTo(u.x,u.y-r-2);g.lineTo(u.x+r,u.y+r);g.lineTo(u.x-r,u.y+r);g.closePath()}
+  g.globalAlpha=u.gr>0?.4:1;g.fillStyle=c;g.fill();g.globalAlpha=1;   // кокон полупрозрачный
+  if(u.rit>0){g.beginPath();g.arc(u.x,u.y,r+8,0,7);g.strokeStyle=c;g.lineWidth=2;g.stroke()} // кольцо ритуала
+  if(u.team===me){g.strokeStyle='#fff';g.lineWidth=2;g.stroke()}else{g.strokeStyle='#f43f5e';g.lineWidth=2;g.stroke()} // свои — белая кайма, чужие — красная   // твои — с белой каймой
+  if(u.sel){g.beginPath();g.arc(u.x,u.y,r+5,0,7);g.strokeStyle='#ffd54a';g.lineWidth=2;g.stroke()}
+  if(u.stun>0){g.fillStyle='#ffd54a';g.fillText('⚡',u.x,u.y-r-8)}
+  if(u.hp<u.max||u.base){g.fillStyle='#000';g.fillRect(u.x-r,u.y-r-7,r*2,3);
+   g.fillStyle='#4ade80';g.fillRect(u.x-r,u.y-r-7,r*2*u.hp/u.max,3)}
+  if(u.base){g.fillStyle='#fff';g.font='11px sans-serif';g.textAlign='center';g.fillText(u.team===me?'ТЫ':online?'ВРАГ':'БОТ',u.x,u.y+4)}
+ });
+ fx.forEach(f=>{                                      // вспышки выстрелов и метки приказов
+  g.globalAlpha=Math.min(1,f.ttl*4);g.strokeStyle=f.c||'#fff';g.lineWidth=2;g.beginPath();
+  if(f.x2===undefined)g.arc(f.x,f.y,(.4-f.ttl)*60,0,7);else{g.moveTo(f.x,f.y);g.lineTo(f.x2,f.y2)}
+  g.stroke();g.globalAlpha=1;
+ });
+}
+
+/* ===== БЛОК 11. ПАНЕЛЬ СВЕРХУ И КНОПКИ =====
+   Обновляет текст ресурсов/времени и блокирует кнопки, если не хватает денег. */
+function ui(){
+ $('hud').textContent=F[fac[me]].res+': '+(res[me]|0)+' (+'+income(me).toFixed(1)+'/с) · '+fmt(time)+
+  ' · Ядро: ты '+(core[me]|0)+'/180, враг '+(core[1-me]|0)+'/180 · враг: '+F[fac[1-me]].n;
+ [...$('buy').children].forEach((b,i)=>b.disabled=res[me]<F[fac[me]].u[i].cost);
+}
+
+/* ===== БЛОК 12. УПРАВЛЕНИЕ (касания и клики) =====
+   Тап по своему юниту — выбрать/снять. Тап по земле — выбранные идут туда.
+   Тап по врагу — выбранные его атакуют. */
+/* setSel(): выбрать/снять выбор юнита (номер запоминаем для гостя).
+   order(): приказ — гость шлёт хозяину (с зеркалом координат), остальные выполняют.
+   doOrder(): сам приказ команды t: ids — кому, fid — цель-враг (0 — нет), x,y — точка. */
+function setSel(u,v){u.sel=v;v?selIds.add(u.id):selIds.delete(u.id)}
+function order(ids,fid,x,y){
+ if(guest()){const q=fl(x,y);send({t:'o',ids,fid,x:q[0],y:q[1]});return}
+ doOrder(me,ids,fid,x,y);
+}
+function doOrder(t,ids,fid,x,y){
+ const foe=fid?units.find(u=>u.id===fid):null;
+ units.forEach(u=>{if(u.team!==t||!ids.includes(u.id))return;
+  if(foe){u.tgt=foe;u.mx=null}else{u.tgt=null;u.mx=x+rnd(-18,18);u.my=y+rnd(-18,18)}});
+}
+function tap(e){
+ if(!running)return;
+ const r=cv.getBoundingClientRect();
+ const p={x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}; // экран → координаты поля
+ const mine=units.find(u=>u.team===me&&!u.base&&u.hp>0&&dist(u,p)<20);
+ if(mine){setSel(mine,!mine.sel);return}
+ const foe=units.find(u=>u.team!==me&&u.hp>0&&dist(u,p)<u.r+14);
+ order(units.filter(u=>u.sel&&u.team===me).map(u=>u.id),foe?foe.id:0,p.x,p.y);
+ fx.push({x:p.x,y:p.y,ttl:.4});                       // метка на месте тапа
+}
+/* Рамка выделения: зажми палец на пустом месте и протяни — выберутся все твои юниты внутри.
+   Короткое касание (без протяжки) работает как раньше — это функция tap() выше. */
+let dr=null;   // dr = текущая рамка {x,y — начало; x2,y2 — конец; on — тянется ли}
+const pt=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}};
+cv.addEventListener('pointerdown',e=>{if(!running)return;cv.setPointerCapture(e.pointerId);dr={...pt(e),on:0}});
+cv.addEventListener('pointermove',e=>{if(!dr)return;const p=pt(e);dr.x2=p.x;dr.y2=p.y;if(Math.hypot(p.x-dr.x,p.y-dr.y)>14)dr.on=1});
+cv.addEventListener('pointercancel',()=>{dr=null});
+cv.addEventListener('pointerup',e=>{
+ if(!dr)return;const d=dr;dr=null;
+ if(!d.on){tap(e);return}                              // не протягивали — обычный тап
+ const x1=Math.min(d.x,d.x2),x2=Math.max(d.x,d.x2),y1=Math.min(d.y,d.y2),y2=Math.max(d.y,d.y2);
+ units.forEach(u=>{if(u.team===me&&!u.base)setSel(u,u.x>=x1&&u.x<=x2&&u.y>=y1&&u.y<=y2)});
+});
+/* «Все войска»: выбирает всех твоих бойцов, повторное нажатие — снимает выбор */
+$('fuse').onclick=()=>fuse();
+$('all').onclick=()=>{
+ if(!running)return;
+ const a=units.filter(u=>u.team===me&&!u.base);
+ const on=a.some(u=>!u.sel);a.forEach(u=>setSel(u,on));
+};
+
+/* ===== БЛОК 14. ОНЛАЙН 1v1 (PeerJS: игроки соединяются напрямую, свой сервер не нужен) =====
+   Хозяин (команда 0) ведёт всю игру и ~12 раз в секунду шлёт гостю «снимок» мира (snap).
+   Гость (команда 1) только рисует снимки (onSnap) и шлёт хозяину приказы.
+   fl() зеркалит поле для гостя, чтобы его база тоже была «своей» (снизу/слева). */
+const fl=(x,y)=>me?[W-x,H-y]:[x,y];
+let joinCode='';
+const ovMsg=t=>{$('ov').style.display='flex';$('ov').innerHTML='<div class="box"><h2>'+t+'</h2><button onclick="location.reload()">Отмена</button></div>'};
+function setMode(m){mode=m;if(m==='join'){joinCode=(prompt('Код комнаты (4 буквы)')||'').trim().toUpperCase();if(!joinCode)mode='solo'}menu()}
+function pick(k){if(mode==='host')hostRoom(k);else if(mode==='join')joinRoom(k);else{online=0;start(k)}}
+/* Хозяин: создаёт комнату с кодом, ждёт гостя, по его «hi» запускает матч и шлёт «go». */
+function hostRoom(k){
+ const code=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random()*24|0]).join('');
+ ovMsg('Код комнаты: <b>'+code+'</b><br>Отправь код другу и жди...');
+ peer=new Peer('anomaly-'+code);
+ peer.on('error',e=>ovMsg('Ошибка связи: '+e.type));
+ peer.on('connection',c=>{conn=c;
+  c.on('data',m=>{
+   if(m.t==='hi'){online=1;start(k,m.f);send({t:'go',W,H,P,fac,nodes:nodes.map(n=>[n.x,n.y,n.r,n.core])})}
+   else if(m.t==='o')doOrder(1,m.ids,m.fid,m.x,m.y);
+   else if(m.t==='b'){const d=F[fac[1]].u[m.i];if(d)d.ritual?ritual(1,d):buy(1,d)}
+   else if(m.t==='f')fuse(1);
+  });
+  c.on('close',()=>{if(running)end(true,'Соперник вышел.')});
+ });
+}
+/* Гость: подключается по коду, сообщает свою фракцию, дальше слушает хозяина. */
+function joinRoom(k){
+ ovMsg('Подключаемся к комнате '+joinCode+'...');
+ peer=new Peer();
+ peer.on('error',e=>ovMsg('Ошибка связи: '+e.type+'. Проверь код.'));
+ peer.on('open',()=>{
+  conn=peer.connect('anomaly-'+joinCode,{serialization:'json'});
+  conn.on('open',()=>send({t:'hi',f:k}));
+  conn.on('data',m=>{if(m.t==='go')guestGo(m);else if(m.t==='s')onSnap(m);else if(m.t==='e')end(m.w===me,m.why)});
+  conn.on('close',()=>{if(running)end(true,'Соперник вышел.')});
+ });
+}
+/* guestGo(): гость получил карту и фракции — готовит экран */
+function guestGo(m){
+ me=1;online=1;P=m.P;W=m.W;H=m.H;cv.width=W;cv.height=H;fac=m.fac;
+ nodes=m.nodes.map(a=>{const q=fl(a[0],a[1]);return{x:q[0],y:q[1],r:a[2],o:null,p:0,core:a[3]}});
+ units=[];fx=[];res=[0,0];core=[0,0];time=0;hintT=0;selIds.clear();
+ mkBtns(fac[1]);$('ov').style.display='none';running=true;ui();fit();
+}
+/* snap(): хозяин упаковывает мир в компактные массивы и шлёт гостю (не чаще 12 раз/с) */
+function snap(){
+ const n=performance.now();if(n-snapT<80)return;snapT=n;
+ send({t:'s',tm:time,r:[res[0]|0,res[1]|0],c:[core[0]|0,core[1]|0],h:hintT>0?hint:'',
+  n:nodes.map(a=>[a.o,Math.round(a.p*100)/100]),
+  u:units.filter(u=>u.hp>0).map(u=>[u.id,u.team,u.f,Math.round(u.x),Math.round(u.y),Math.round(u.hp),Math.round(u.max),u.r,u.base?1:0,u.gr>0?1:0,u.rit>0?1:0,u.stun>0?1:0,u.fz?1:0]),
+  x:fx.filter(f=>f.x2!==undefined).map(f=>[Math.round(f.x),Math.round(f.y),Math.round(f.x2),Math.round(f.y2),f.c])});
+}
+/* onSnap(): гость превращает снимок обратно в юнитов/точки/эффекты (с зеркалом координат) */
+function onSnap(m){
+ time=m.tm;res=m.r;core=m.c;
+ units=m.u.map(a=>{const q=fl(a[3],a[4]);return{id:a[0],team:a[1],f:a[2],x:q[0],y:q[1],hp:a[5],max:a[6],r:a[7],base:a[8],gr:a[9],rit:a[10],stun:a[11],fz:a[12],sel:selIds.has(a[0])}});
+ nodes.forEach((n,i)=>{n.o=m.n[i][0];n.p=m.n[i][1]});
+ fx=m.x.map(a=>{const p=fl(a[0],a[1]),q=fl(a[2],a[3]);return{x:p[0],y:p[1],x2:q[0],y2:q[1],ttl:.15,c:a[4]}});
+ if(m.h&&m.h!==hint)say(m.h);
+}
+/* finish(): матч закончен, победила команда w. Хозяин сообщает гостю и показывает итог себе */
+function finish(w,why){if(online)send({t:'e',w,why});end(w===me,why)}
+
+/* ===== БЛОК 13. ЗАПУСК =====
+   Бесконечный цикл: считаем шаг игры, рисуем, показываем панель. */
+let last=0;
+function loop(ts){
+ const dt=Math.min(.05,(ts-last)/1000);last=ts;
+ if(running){if(guest()){hintT-=dt;draw();ui()}else{update(dt);if(running){draw();ui()}}}
+ requestAnimationFrame(loop);
+}
+menu();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
