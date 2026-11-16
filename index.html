@@ -21,6 +21,7 @@ canvas{background:#10131a;touch-action:none}  /* touch-action: страница 
 #pn{width:100%;box-sizing:border-box;display:flex;gap:6px;padding:6px;background:var(--pn);border-top:1px solid var(--ln)}
 #buy{flex:1;display:flex;gap:6px}
 #buy button{flex:1}
+#pn>button{padding:8px 4px;font-size:12px}
 button{font:inherit;color:var(--tx);background:var(--bt);border:1px solid var(--ln);border-radius:10px;padding:8px 6px}
 button:disabled{opacity:.4}
 #ov{position:fixed;inset:0;background:rgba(8,10,14,.92);display:flex;align-items:center;justify-content:center;overflow:auto}
@@ -36,7 +37,7 @@ button:disabled{opacity:.4}
 <div id="app">
  <div id="hud"></div>
  <canvas id="cv"></canvas>
- <div id="pn"><div id="buy"></div><button id="fuse" style="display:none">Сращивание</button><button id="all">Все войска</button></div>
+ <div id="pn"><div id="buy"></div><button id="fuse" style="display:none">Сращивание</button><button id="home">К базе</button><button id="all">Все войска</button></div>
 </div>
 <div id="ov"></div>
 
@@ -58,9 +59,9 @@ const F={
   u:[{n:'Дрон',cost:25,hp:40,dmg:6,range:110,speed:75,rate:.8},
      {n:'Киборг',cost:55,hp:100,dmg:12,range:120,speed:60,rate:1},
      {n:'Хакер',cost:80,hp:60,dmg:4,range:150,speed:60,rate:5,hack:10}]},
- bio:{n:'Био-Генезис',c:'#84cc16',res:'Биомасса',start:160,base:6,node:2,regen:3,grow:3,
+ bio:{n:'Био-Генезис',c:'#84cc16',res:'Биомасса',start:160,base:6,node:2,regen:.05,slime:2.5,grow:3,
   curve:t=>Math.max(.7,1.4-t/300),
-  info:'Дешёвый рой, самолечение, юниты вызревают в коконах. Кнопка «Сращивание» (выбери двоих) делает гибрида. Доход падает — дави рано.',
+  info:'Дешёвый рой, юниты вызревают в коконах. Лечатся тем быстрее, чем дольше бой, а на своей слизи (у базы и захваченных точек) — ещё быстрее. Кнопка «Сращивание» (выбери двоих) делает гибрида. Доход падает, зато армия живучая.',
   u:[{n:'Рой ×2',cost:20,count:2,hp:15,dmg:3,range:16,speed:115,rate:.7},
      {n:'Хищник',cost:45,hp:90,dmg:12,range:18,speed:100,rate:.9},
      {n:'Бугай',cost:90,hp:260,dmg:20,range:20,speed:55,rate:1.1}]},
@@ -84,6 +85,11 @@ let W,H,P,units,nodes,fx,res,fac,time,core,running=false,bot,cat,diff=1,ttl='',h
    mode = что выбирает игрок в меню (solo/host/join); uid = счётчик номеров юнитов;
    selIds = номера выбранных мной юнитов (нужны гостю). */
 let online=0,me=0,peer,conn,mode='solo',uid=0,snapT=0;const selIds=new Set();
+/* Камера: cam.x,cam.y = левый верхний угол видимой части мира, cam.z = масштаб;
+   DPR = плотность пикселей экрана (для чёткой картинки).
+   bots[t] = «мозг» бота команды t; botT[t]=1 — командой t управляет бот. */
+const cam={x:0,y:0,z:1},DPR=Math.min(2,window.devicePixelRatio||1);
+let bots=[{buy:3,order:5},{buy:3,order:5}],botT=[0,1];
 const guest=()=>online&&me===1;                                   // я — гость?
 const send=m=>{try{conn&&conn.open&&conn.send(m)}catch(e){}};     // отправить сообщение сопернику
 const say=s=>{hint=s;hintT=4};   // say(): короткое сообщение на поле на 4 секунды
@@ -98,9 +104,10 @@ function menu(title){
  $('ov').style.display='flex';
  $('ov').innerHTML='<div class="box"><h2>'+(ttl||'Аномалия: Три Пути')+'</h2>'+
  '<p>Бой против бота или онлайн 1v1 с другом. Нажми на своего бойца — он выберется, или протяни палец по полю — рамка выберет всех внутри. Нажми на землю — пойдёт туда, на врага — атакует. '+
- 'Стой на точках, чтобы захватить: они дают ресурс. Удержи Ядро в центре 180 секунд или разрушь базу врага. Каждые 2,5 минуты — катаклизм.</p>'+
+ 'Стой на точках, чтобы захватить: они дают ресурс. Ядро в центре открывается на 4-й минуте: удержи его 120 секунд или разрушь базу врага. Двумя пальцами двигай и приближай карту. Каждые 2,5 минуты — катаклизм.</p>'+
  '<p>Сложность бота: '+['Лёгкая','Нормальная','Сложная'].map((n,i)=>'<button onclick="diff='+i+';menu()" style="padding:6px 10px;'+(diff==i?'border:2px solid #ffd54a':'')+'">'+n+'</button>').join(' ')+'</p>'+
  '<p>Онлайн 1v1: <button onclick="setMode(\'host\')">Создать комнату</button> <button onclick="setMode(\'join\')">Войти по коду</button></p>'+
+ '<p><button onclick="simTest(10)">Тест баланса: боты играют сами</button></p>'+
  (mode!=='solo'?'<p><b>'+(mode=='host'?'Создаёшь комнату':'Входишь в комнату '+joinCode)+' — выбери фракцию</b> <button onclick="mode=\'solo\';menu()">отмена</button></p>':'')+
  Object.keys(F).map(k=>'<button class="fc" style="border-color:'+F[k].c+'" onclick="pick(\''+k+'\')"><b>'+F[k].n+'</b><br>'+F[k].info+'</button>').join('')+'</div>';
 }
@@ -112,21 +119,49 @@ function end(win,why){running=false;mode='solo';if(online){online=0;setTimeout((
    pos(a,b) переводит «доли карты» в пиксели, а на вертикальном
    телефоне поворачивает карту: твоя база внизу, вражеская вверху. */
 function start(fp,fp2){
- P=innerHeight>innerWidth;W=P?540:960;H=P?800:560;cv.width=W;cv.height=H;
+ P=innerHeight>innerWidth;W=P?810:1440;H=P?1200:840;   // мир в 1.5 раза больше прежнего
  const others=Object.keys(F).filter(k=>k!=fp);
  fac=[fp,fp2||others[Math.random()*2|0]];
  res=[F[fp].start,F[fac[1]].start];
- time=0;core=[0,0];fx=[];units=[];bot={buy:3,order:5};cat=150;hintT=0;me=0;uid=0;snapT=0;
+ time=0;core=[0,0];fx=[];units=[];bots=[{buy:3,order:5},{buy:3,order:5}];botT=[0,1];cat=150;hintT=0;me=0;uid=0;snapT=0;
  const pos=(a,b)=>P?{x:b*W,y:(1-a)*H}:{x:a*W,y:b*H};
  let p=pos(.08,.5),q=pos(.92,.5);
- units.push(mk(0,p.x,p.y,{hp:2000,dmg:14,range:150,speed:0,rate:1},{r:28,base:1}));
- units.push(mk(1,q.x,q.y,{hp:2000,dmg:14,range:150,speed:0,rate:1},{r:28,base:1}));
+ units.push(mk(0,p.x,p.y,{hp:5000,dmg:24,range:150,speed:0,rate:1},{r:28,base:1}));
+ units.push(mk(1,q.x,q.y,{hp:5000,dmg:24,range:150,speed:0,rate:1},{r:28,base:1}));
  nodes=[[.31,.25],[.31,.75],[.69,.25],[.69,.75],[.5,.5]].map((a,i)=>{
   const s=pos(a[0],a[1]);return{x:s.x,y:s.y,r:i==4?44:32,o:null,p:0,core:i==4}});
  // кнопки найма юнитов твоей фракции
  $('buy').innerHTML='';
  mkBtns(fp);
- $('ov').style.display='none';running=true;ui();fit();
+ $('ov').style.display='none';running=true;ui();fit();camInit();
+}
+/* ===== КАМЕРА И МИНИ-КАРТА =====
+   zMin() — самый далёкий масштаб (вся карта на экране); clampCam() — не даёт камере
+   уехать за край мира; camTo() — задать масштаб так, чтобы точка мира (wx,wy) оказалась
+   под точкой экрана (sx,sy); homePos() — где моя база; centerOn() — навести камеру;
+   mmRect()/mmHit() — мини-карта в углу, тап по ней переносит камеру; mini() — её рисует. */
+const zMin=()=>Math.min(cv.clientWidth/W,cv.clientHeight/H);
+function clampCam(){
+ const vw=cv.clientWidth/cam.z,vh=cv.clientHeight/cam.z;
+ cam.x=W<=vw?(W-vw)/2:Math.max(0,Math.min(W-vw,cam.x));
+ cam.y=H<=vh?(H-vh)/2:Math.max(0,Math.min(H-vh,cam.y));
+}
+function camTo(z,wx,wy,sx,sy){cam.z=Math.max(zMin(),Math.min(2.2,z));cam.x=wx-sx/cam.z;cam.y=wy-sy/cam.z;clampCam()}
+const homePos=()=>P?{x:W/2,y:H*.92}:{x:W*.08,y:H/2};
+function centerOn(p){cam.x=p.x-cv.clientWidth/cam.z/2;cam.y=p.y-cv.clientHeight/cam.z/2;clampCam()}
+function camInit(){cam.z=Math.max(zMin(),zMin()*1.7);centerOn(homePos())}
+function mmRect(){const s=Math.min(110/W,110/H);return{s,w:W*s,h:H*s,x:cv.clientWidth-W*s-6,y:6}}
+function mmHit(e){
+ const r=cv.getBoundingClientRect(),m=mmRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+ if(x<m.x||x>m.x+m.w||y<m.y||y>m.y+m.h)return false;
+ centerOn({x:(x-m.x)/m.s,y:(y-m.y)/m.s});return true;
+}
+function mini(){
+ const m=mmRect();g.setTransform(DPR,0,0,DPR,0,0);   // рисуем в пикселях экрана
+ g.fillStyle='rgba(0,0,0,.55)';g.fillRect(m.x,m.y,m.w,m.h);
+ nodes.forEach(n=>{g.fillStyle=n.o===null?'#777777':F[fac[n.o]].c;g.fillRect(m.x+n.x*m.s-2,m.y+n.y*m.s-2,4,4)});
+ units.forEach(u=>{if(u.hp<=0)return;g.fillStyle=u.team===me?'#ffffff':'#f43f5e';const q=u.base?4:2;g.fillRect(m.x+u.x*m.s-q/2,m.y+u.y*m.s-q/2,q,q)});
+ g.strokeStyle='#ffd54a';g.lineWidth=1;g.strokeRect(m.x+cam.x*m.s,m.y+cam.y*m.s,cv.clientWidth/cam.z*m.s,cv.clientHeight/cam.z*m.s);
 }
 /* mkBtns(): рисует кнопки найма для фракции fp. act(i): нажата кнопка номер i —
    гость отправляет приказ хозяину, остальные выполняют сразу. */
@@ -144,7 +179,7 @@ function act(i){
 function fit(){
  if(!W)return;
  const aw=innerWidth,ah=innerHeight-$('hud').offsetHeight-$('pn').offsetHeight-8;
- const s=Math.min(aw/W,ah/H);cv.style.width=W*s+'px';cv.style.height=H*s+'px';
+ cv.style.width=aw+'px';cv.style.height=ah+'px';cv.width=aw*DPR;cv.height=ah*DPR;clampCam();
 }
 addEventListener('resize',fit);
 
@@ -225,6 +260,32 @@ function income(t){
  return(f.base+k*f.node)*f.curve(time)*(t&&!online?[.8,1,1.3][diff]:1); // у бота доход зависит от сложности
 }
 
+/* onSlime(): юнит стоит на «слизи» — в 180 пикселях от своей базы или у своей захваченной точки.
+   Био-юниты там лечатся в 2.5 раза быстрее (множитель slime в данных фракции). */
+function onSlime(u){return dist(u,units[u.team])<180||nodes.some(n=>n.o===u.team&&dist(u,n)<n.r+60)}
+/* botThink(): «мозг» бота команды t. Каждые пару секунд покупает юнитов (чаще самых дорогих
+   из доступных), раз в 5 секунд раздаёт приказы: есть враг у базы — все защищать;
+   армия большая — штурм базы врага; иначе — захват ближайшей чужой точки. */
+function botThink(t,dt){
+ const B=bots[t];B.buy-=dt;B.order-=dt;
+ if(B.buy<=0){B.buy=[3.5,2.5,1.8][diff];
+  const o=F[fac[t]].u.filter(d=>d.cost<=res[t]);
+  if(o.length)buy(t,Math.random()<.6?o[o.length-1]:o[Math.random()*o.length|0]);
+ }
+ if(B.order<=0){B.order=5;
+  const army=units.filter(u=>u.team===t&&!u.base);
+  if(fac[t]==='bio'&&army.filter(u=>!u.fz&&!(u.gr>0)).length>=2)fuse(t);   // био-бот сращивает юнитов
+  const th=units.find(e=>e.team!==t&&!e.base&&e.hp>0&&dist(e,units[t])<260);
+  army.forEach(u=>{
+   if(th){u.mx=th.x;u.my=th.y;return}
+   if(u.mx!=null)return;
+   if(army.length>=[10,8,6][diff]){u.mx=units[1-t].x;u.my=units[1-t].y}
+   else{const n=nodes.filter(n=>n.o!==t&&!(n.core&&time<240)).sort((a,b)=>dist(u,a)-dist(u,b))[0];
+    if(n){u.mx=n.x+rnd(-15,15);u.my=n.y+rnd(-15,15)}}
+  });
+ }
+}
+
 /* ===== БЛОК 9. ГЛАВНЫЙ ШАГ ИГРЫ =====
    Вызывается ~60 раз в секунду. dt = сколько секунд прошло с прошлого кадра. */
 function update(dt){
@@ -234,6 +295,7 @@ function update(dt){
  res[0]+=income(0)*dt;res[1]+=income(1)*dt;          // 1) доход
 
  nodes.forEach(n=>{                                   // 2) захват точек
+  if(n.core&&time<240)return;   // Ядро закрыто до 4:00
   let a=0,b=0;
   units.forEach(u=>{if(!u.base&&u.hp>0&&dist(u,n)<n.r+8)u.team?b++:a++});
   if(a&&!b)n.p=Math.min(1,n.p+dt*.12*Math.min(a,4)); // p от -1 (бот) до +1 (ты)
@@ -249,7 +311,7 @@ function update(dt){
   if(u.hp<=0)return;
   if(u.hj!=null&&(u.hj-=dt)<=0){u.hj=null;u.team=1-u.team;u.tgt=null;u.mx=null} // взлом кончился — юнит возвращается
   if(u.life!=null&&(u.life-=dt)<=0)u.hp=0;            // духи исчезают по таймеру
-  if(F[u.f].regen&&!u.base)u.hp=Math.min(u.max,u.hp+F[u.f].regen*dt); // самолечение био
+  if(F[u.f].regen&&!u.base)u.hp=Math.min(u.max,u.hp+u.max*F[u.f].regen*(1+time/180)*(onSlime(u)?F[u.f].slime:1)*dt); // самолечение био: % здоровья в секунду, растёт со временем, на слизи ×2.5 // самолечение био
   if(u.gr>0){u.gr-=dt;return}                         // кокон: юнит ещё вызревает
   if(u.rit>0){if((u.rit-=dt)<=0)units.push(mk(u.team,u.x+14,u.y,u.rd,{gr:0}));return} // ритуал: Дух появится, когда жрец дочитает
   if(u.stun>0){u.stun-=dt;return}                     // оглушённый стоит
@@ -263,29 +325,11 @@ function update(dt){
  units=units.filter(u=>u.hp>0||u.base);               // 5) убираем погибших (базы остаются)
  fx=fx.filter(f=>(f.ttl-=dt)>0);
 
- // 6) БОТ: каждые 2.5 с покупает, каждые 5 с раздаёт приказы
- if(!online){bot.buy-=dt;bot.order-=dt;
- if(bot.buy<=0){bot.buy=[3.5,2.5,1.8][diff];
-  const o=F[fac[1]].u.filter(d=>d.cost<=res[1]);
-  if(o.length)buy(1,Math.random()<.6?o[o.length-1]:o[Math.random()*o.length|0]);
- }
- if(bot.order<=0){bot.order=5;
-  const army=units.filter(u=>u.team===1&&!u.base);
-  const th=units.find(e=>e.team===0&&!e.base&&e.hp>0&&dist(e,units[1])<260); // враг у базы бота?
-  army.forEach(u=>{
-   if(th){u.mx=th.x;u.my=th.y;return}   // защита: все бегут к врагу у базы
-   if(u.mx!=null)return;
-   if(army.length>=[10,8,6][diff]){u.mx=units[0].x;u.my=units[0].y}   // армия большая — штурм базы
-   else{                                                  // иначе — к ближайшей чужой точке
-    const n=nodes.filter(n=>n.o!==1).sort((a,b)=>dist(u,a)-dist(u,b))[0];
-    if(n){u.mx=n.x+rnd(-15,15);u.my=n.y+rnd(-15,15)}
-   }
-  });
- }
+ // 6) БОТ(Ы): botT[t]=1 — командой t управляет бот (в тесте баланса — обеими)
+ if(!online)botT.forEach((on,t)=>{if(on)botThink(t,dt)});
 
- }   // конец блока бота (в онлайне бота нет)
  // 7) УСЛОВИЯ ПОБЕДЫ: bw/cw = номер победившей команды (или -1)
- const bw=units[0].hp<=0?1:units[1].hp<=0?0:-1,cw=core[0]>=180?0:core[1]>=180?1:-1;
+ const bw=units[0].hp<=0?1:units[1].hp<=0?0:-1,cw=core[0]>=120?0:core[1]>=120?1:-1;
  if(bw>=0||cw>=0)finish(bw>=0?bw:cw,bw>=0?'База уничтожена.':'Вознесение: Ядро удержано.');
  if(online)snap();   // 8) онлайн: хозяин рассылает состояние гостю
 }
@@ -294,11 +338,18 @@ function update(dt){
    Каждый кадр поле стирается и рисуется заново: сетка, точки, юниты, эффекты.
    Форма юнита = фракция: квадрат — техно, круг — био, треугольник — маги. */
 function draw(){
+ g.setTransform(1,0,0,1,0,0);g.fillStyle='#0b0d12';g.fillRect(0,0,cv.width,cv.height);   // фон за краем мира
+ g.setTransform(cam.z*DPR,0,0,cam.z*DPR,-cam.x*cam.z*DPR,-cam.y*cam.z*DPR);              // включаем камеру
  g.fillStyle='#10131a';g.fillRect(0,0,W,H);
+ [0,1].forEach(t=>{                                    // зелёная «слизь» био: зоны быстрого лечения
+  if(!F[fac[t]].slime)return;const c=F[fac[t]].c+'18',b=units.find(u=>u.base&&u.team===t);
+  if(b){g.beginPath();g.arc(b.x,b.y,180,0,7);g.fillStyle=c;g.fill()}
+  nodes.forEach(n=>{if(n.o===t){g.beginPath();g.arc(n.x,n.y,n.r+60,0,7);g.fillStyle=c;g.fill()}});
+ });
  g.strokeStyle='#1a1f2c';g.lineWidth=1;
  for(let x=0;x<W;x+=60){g.beginPath();g.moveTo(x,0);g.lineTo(x,H);g.stroke()}
  for(let y=0;y<H;y+=60){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}
- if(hintT>0){g.fillStyle='#ffd54a';g.font='14px sans-serif';g.textAlign='center';g.fillText(hint,W/2,24)} // подсказки и катаклизмы
+ if(hintT>0){g.fillStyle='#ffd54a';g.font=(14/cam.z)+'px sans-serif';g.textAlign='center';g.fillText(hint,cam.x+cv.clientWidth/cam.z/2,cam.y+30/cam.z)} // подсказки и катаклизмы
  if(dr&&dr.on){g.strokeStyle='#ffd54a';g.lineWidth=1;g.strokeRect(dr.x,dr.y,dr.x2-dr.x,dr.y2-dr.y)} // рамка выделения
  nodes.forEach(n=>{                                   // точки силы
   const col=n.o===null?'#777777':F[fac[n.o]].c;
@@ -306,7 +357,7 @@ function draw(){
   g.strokeStyle=col;g.lineWidth=3;g.stroke();
   g.beginPath();g.arc(n.x,n.y,n.r-6,-1.57,-1.57+Math.abs(n.p)*6.28); // дуга захвата
   g.strokeStyle=n.p>0?F[fac[0]].c:F[fac[1]].c;g.stroke();
-  if(n.core){g.fillStyle='#fff';g.font='12px sans-serif';g.textAlign='center';g.fillText('ЯДРО',n.x,n.y+4)}
+  if(n.core){g.fillStyle='#fff';g.font='12px sans-serif';g.textAlign='center';g.fillText(time<240?'ЯДРО '+fmt(240-time):'ЯДРО',n.x,n.y+4)}
  });
  units.forEach(u=>{                                   // юниты и базы
   if(u.hp<=0)return;
@@ -329,13 +380,14 @@ function draw(){
   if(f.x2===undefined)g.arc(f.x,f.y,(.4-f.ttl)*60,0,7);else{g.moveTo(f.x,f.y);g.lineTo(f.x2,f.y2)}
   g.stroke();g.globalAlpha=1;
  });
+ mini();   // мини-карта в углу
 }
 
 /* ===== БЛОК 11. ПАНЕЛЬ СВЕРХУ И КНОПКИ =====
    Обновляет текст ресурсов/времени и блокирует кнопки, если не хватает денег. */
 function ui(){
  $('hud').textContent=F[fac[me]].res+': '+(res[me]|0)+' (+'+income(me).toFixed(1)+'/с) · '+fmt(time)+
-  ' · Ядро: ты '+(core[me]|0)+'/180, враг '+(core[1-me]|0)+'/180 · враг: '+F[fac[1-me]].n;
+  ' · Ядро: ты '+(core[me]|0)+'/120, враг '+(core[1-me]|0)+'/120 · враг: '+F[fac[1-me]].n;
  [...$('buy').children].forEach((b,i)=>b.disabled=res[me]<F[fac[me]].u[i].cost);
 }
 
@@ -357,29 +409,54 @@ function doOrder(t,ids,fid,x,y){
 }
 function tap(e){
  if(!running)return;
- const r=cv.getBoundingClientRect();
- const p={x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}; // экран → координаты поля
- const mine=units.find(u=>u.team===me&&!u.base&&u.hp>0&&dist(u,p)<20);
+ const p=pt(e);   // экран → координаты мира
+ const mine=units.find(u=>u.team===me&&!u.base&&u.hp>0&&dist(u,p)<22/Math.min(1,cam.z));
  if(mine){setSel(mine,!mine.sel);return}
- const foe=units.find(u=>u.team!==me&&u.hp>0&&dist(u,p)<u.r+14);
+ const foe=units.find(u=>u.team!==me&&u.hp>0&&dist(u,p)<u.r+14/Math.min(1,cam.z));
  order(units.filter(u=>u.sel&&u.team===me).map(u=>u.id),foe?foe.id:0,p.x,p.y);
  fx.push({x:p.x,y:p.y,ttl:.4});                       // метка на месте тапа
 }
 /* Рамка выделения: зажми палец на пустом месте и протяни — выберутся все твои юниты внутри.
    Короткое касание (без протяжки) работает как раньше — это функция tap() выше. */
-let dr=null;   // dr = текущая рамка {x,y — начало; x2,y2 — конец; on — тянется ли}
-const pt=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}};
-cv.addEventListener('pointerdown',e=>{if(!running)return;cv.setPointerCapture(e.pointerId);dr={...pt(e),on:0}});
-cv.addEventListener('pointermove',e=>{if(!dr)return;const p=pt(e);dr.x2=p.x;dr.y2=p.y;if(Math.hypot(p.x-dr.x,p.y-dr.y)>14)dr.on=1});
-cv.addEventListener('pointercancel',()=>{dr=null});
+let dr=null;   // dr = рамка выделения {x,y — начало; x2,y2 — конец (в мире); on — тянется ли}
+const ptr=new Map();   // активные касания: номер пальца → позиция на экране
+let pinch=null;        // состояние жеста двумя пальцами (камера)
+const pt=e=>{const r=cv.getBoundingClientRect();return{x:cam.x+(e.clientX-r.left)/cam.z,y:cam.y+(e.clientY-r.top)/cam.z}};
+/* Один палец: тап — выбрать/приказ, протяжка — рамка. Второй палец: жест камеры
+   (сдвиг двумя пальцами + щипок для масштаба). Колесо мыши — масштаб на компьютере. */
+cv.addEventListener('pointerdown',e=>{
+ if(!running)return;
+ cv.setPointerCapture(e.pointerId);ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});
+ if(ptr.size===2){dr=null;const a=[...ptr.values()];pinch={d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1,mx:(a[0].x+a[1].x)/2,my:(a[0].y+a[1].y)/2};return}
+ if(ptr.size>2||mmHit(e))return;
+ dr={...pt(e),on:0};
+});
+cv.addEventListener('pointermove',e=>{
+ if(!ptr.has(e.pointerId))return;ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});
+ if(pinch&&ptr.size>=2){
+  const a=[...ptr.values()],d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1,mx=(a[0].x+a[1].x)/2,my=(a[0].y+a[1].y)/2;
+  const r=cv.getBoundingClientRect(),wx=cam.x+(pinch.mx-r.left)/cam.z,wy=cam.y+(pinch.my-r.top)/cam.z; // точка мира под пальцами
+  camTo(cam.z*d/pinch.d,wx,wy,mx-r.left,my-r.top);pinch={d,mx,my};return;
+ }
+ if(!dr){mmHit(e);return}
+ const p=pt(e);dr.x2=p.x;dr.y2=p.y;if(Math.hypot(p.x-dr.x,p.y-dr.y)>14/cam.z)dr.on=1;
+});
+const upPtr=e=>{ptr.delete(e.pointerId);if(ptr.size<2)pinch=null};
+cv.addEventListener('pointercancel',e=>{upPtr(e);dr=null});
 cv.addEventListener('pointerup',e=>{
+ upPtr(e);
  if(!dr)return;const d=dr;dr=null;
  if(!d.on){tap(e);return}                              // не протягивали — обычный тап
  const x1=Math.min(d.x,d.x2),x2=Math.max(d.x,d.x2),y1=Math.min(d.y,d.y2),y2=Math.max(d.y,d.y2);
  units.forEach(u=>{if(u.team===me&&!u.base)setSel(u,u.x>=x1&&u.x<=x2&&u.y>=y1&&u.y<=y2)});
 });
+cv.addEventListener('wheel',e=>{
+ e.preventDefault();const r=cv.getBoundingClientRect(),p=pt(e);
+ camTo(cam.z*(e.deltaY<0?1.15:1/1.15),p.x,p.y,e.clientX-r.left,e.clientY-r.top);
+},{passive:false});
 /* «Все войска»: выбирает всех твоих бойцов, повторное нажатие — снимает выбор */
 $('fuse').onclick=()=>fuse();
+$('home').onclick=()=>centerOn(homePos());   // камера к своей базе
 $('all').onclick=()=>{
  if(!running)return;
  const a=units.filter(u=>u.team===me&&!u.base);
@@ -425,10 +502,10 @@ function joinRoom(k){
 }
 /* guestGo(): гость получил карту и фракции — готовит экран */
 function guestGo(m){
- me=1;online=1;P=m.P;W=m.W;H=m.H;cv.width=W;cv.height=H;fac=m.fac;
+ me=1;online=1;P=m.P;W=m.W;H=m.H;fac=m.fac;
  nodes=m.nodes.map(a=>{const q=fl(a[0],a[1]);return{x:q[0],y:q[1],r:a[2],o:null,p:0,core:a[3]}});
  units=[];fx=[];res=[0,0];core=[0,0];time=0;hintT=0;selIds.clear();
- mkBtns(fac[1]);$('ov').style.display='none';running=true;ui();fit();
+ mkBtns(fac[1]);$('ov').style.display='none';running=true;ui();fit();camInit();
 }
 /* snap(): хозяин упаковывает мир в компактные массивы и шлёт гостю (не чаще 12 раз/с) */
 function snap(){
@@ -448,6 +525,37 @@ function onSnap(m){
 }
 /* finish(): матч закончен, победила команда w. Хозяин сообщает гостю и показывает итог себе */
 function finish(w,why){if(online)send({t:'e',w,why});end(w===me,why)}
+
+/* ===== БЛОК 15. ТЕСТ БАЛАНСА (кнопка в меню) =====
+   Боты играют друг с другом без рисования, ускоренно, по всем парам фракций (N партий на пару,
+   по очереди слева и справа). Потом показывается, кто сколько выиграл, чем кончаются партии
+   (базой или Ядром) и сколько они длятся. Это грубый ориентир: боты не умеют микроконтроль. */
+function simTest(N){
+ const fs=Object.keys(F),pairs=[];fs.forEach(a=>fs.forEach(b=>{if(a!==b)pairs.push([a,b])}));
+ const w={},pr={},rs={base:0,core:0,none:0},du=[];fs.forEach(f=>w[f]=0);pairs.forEach(p=>pr[p.join('>')]=0);
+ const tot=pairs.length*N;let n=0;
+ const step=()=>{
+  if(n>=tot){
+   du.sort((a,b)=>a-b);const per=N*4;
+   $('ov').innerHTML='<div class="box"><h2>Результаты теста баланса</h2>'+
+    fs.map(f=>'<p><b>'+F[f].n+'</b>: '+w[f]+' из '+per+' ('+Math.round(w[f]/per*100)+'%)</p>').join('')+
+    '<p>Ориентир: около 33% у каждой — ровно; ниже 20% или выше 50% — перекос.</p>'+
+    '<p>Конец партии: базой '+rs.base+', Ядром '+rs.core+', без итога '+rs.none+'. Средняя длина партии: '+fmt(du[du.length>>1])+'.</p>'+
+    pairs.map(p=>'<p style="font-size:12px">'+F[p[0]].n+' (слева) против '+F[p[1]].n+': слева выиграл '+pr[p.join('>')]+' из '+N+'</p>').join('')+
+    '<button onclick="menu(\'\')">Назад в меню</button></div>';
+   return;
+  }
+  const a=pairs[n%pairs.length][0],b=pairs[n%pairs.length][1];   // пары идут по кругу
+  online=0;diff=1;start(a,b);botT=[1,1];
+  while(running&&time<1500)update(.1);
+  const bw=units[0].hp<=0?1:units[1].hp<=0?0:-1,cw=core[0]>=120?0:core[1]>=120?1:-1,x=bw>=0?bw:cw;
+  if(x<0)rs.none++;else{rs[bw>=0?'base':'core']++;w[fac[x]]++;if(x===0)pr[a+'>'+b]++}
+  running=false;du.push(time);n++;
+  $('ov').style.display='flex';$('ov').innerHTML='<div class="box"><h2>Тест баланса</h2><p>Боты играют сами: '+n+' из '+tot+'</p></div>';
+  setTimeout(step,0);
+ };
+ step();
+}
 
 /* ===== БЛОК 13. ЗАПУСК =====
    Бесконечный цикл: считаем шаг игры, рисуем, показываем панель. */
