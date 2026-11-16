@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Аномалия: Три Пути — онлайн</title>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
@@ -14,15 +14,15 @@
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b0d12;--pn:#161a22;--tx:#e9e9ef;--ln:#2a2f3b;--bt:#222735}}
 :root[data-theme="dark"]{--bg:#0b0d12;--pn:#161a22;--tx:#e9e9ef;--ln:#2a2f3b;--bt:#222735}
 html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
-body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:14px system-ui,sans-serif;user-select:none}
+body{touch-action:manipulation;margin:0;height:100%;background:var(--bg);color:var(--tx);font:14px system-ui,sans-serif;user-select:none}
 #app{display:flex;flex-direction:column;align-items:center;height:100%}
 #hud{width:100%;box-sizing:border-box;min-height:42px;padding:6px 10px;background:var(--pn);border-bottom:1px solid var(--ln);font-size:12px}
 canvas{background:#10131a;touch-action:none}  /* touch-action: страница не прокручивается при игре */
-#pn{width:100%;box-sizing:border-box;display:flex;gap:6px;padding:6px;background:var(--pn);border-top:1px solid var(--ln)}
-#buy{flex:1;display:flex;gap:6px}
+#pn{width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:6px;background:var(--pn);border-top:1px solid var(--ln)}
+#buy,#ctl{display:flex;gap:6px}
 #buy button{flex:1}
-#pn>button{padding:8px 4px;font-size:12px}
-button{font:inherit;color:var(--tx);background:var(--bt);border:1px solid var(--ln);border-radius:10px;padding:8px 6px}
+#ctl button{flex:1;padding:8px 4px;font-size:12px}
+button{touch-action:manipulation;font:inherit;color:var(--tx);background:var(--bt);border:1px solid var(--ln);border-radius:10px;padding:8px 6px}
 button:disabled{opacity:.4}
 #ov{position:fixed;inset:0;background:rgba(8,10,14,.92);display:flex;align-items:center;justify-content:center;overflow:auto}
 .box{max-width:420px;padding:16px;color:#e9e9ef}
@@ -37,7 +37,7 @@ button:disabled{opacity:.4}
 <div id="app">
  <div id="hud"></div>
  <canvas id="cv"></canvas>
- <div id="pn"><div id="buy"></div><button id="fuse" style="display:none">Сращивание</button><button id="home">К базе</button><button id="all">Все войска</button></div>
+ <div id="pn"><div id="buy"></div><div id="ctl"><button id="up">База ↑</button><button id="fuse" style="display:none">Сращивание</button><button id="home">К базе</button><button id="all">Все войска</button></div></div>
 </div>
 <div id="ov"></div>
 
@@ -50,7 +50,7 @@ button:disabled{opacity:.4}
    техно растёт к концу, био падает, маги не зависят от времени.
    u = список юнитов: cost = цена, hp = здоровье, dmg = урон за удар,
    range = дальность, speed = скорость, rate = секунд между ударами.
-   Особенности: count = сколько юнитов за раз, zap = оглушение (сек), hack = угон вражеского юнита на N сек, grow = секунд «вызревания» в коконе, ritual = только через ритуал,
+   Особенности: count = сколько юнитов за раз, zap = оглушение (сек), hack = угон вражеского юнита на N сек, grow = секунд «вызревания» в коконе, ritual = только через ритуал, ult = ультимативный юнит (нужна база ур.2, один на игрока),
    splash = радиус урона по площади, life = время жизни (сек). */
 const F={
  techno:{n:'Нео-Сема',c:'#38bdf8',res:'Энергия',start:100,base:5,node:3,
@@ -58,19 +58,22 @@ const F={
   info:'Дальний бой и быстро растущий доход, но юниты дорогие. Хакеры угоняют вражеских юнитов на 10 с.',
   u:[{n:'Дрон',cost:32,hp:40,dmg:6,range:110,speed:75,rate:.8},
      {n:'Киборг',cost:60,hp:100,dmg:12,range:120,speed:60,rate:1},
-     {n:'Хакер',cost:80,hp:60,dmg:4,range:150,speed:60,rate:5,hack:10}]},
+     {n:'Хакер',cost:80,hp:60,dmg:4,range:150,speed:60,rate:5,hack:10},
+     {n:'Мех-Титан',cost:240,hp:420,dmg:30,range:140,speed:45,rate:1.2,ult:1}]},
  bio:{n:'Био-Генезис',c:'#84cc16',res:'Биомасса',start:160,base:6,node:2,regen:.05,slime:2.5,grow:3,
   curve:t=>Math.max(.7,1.4-t/300),
   info:'Дешёвый рой, юниты вызревают в коконах. Лечатся тем быстрее, чем дольше бой, а на своей слизи (у базы и захваченных точек) — ещё быстрее. Кнопка «Сращивание» (выбери двоих) делает гибрида. Доход падает, зато армия живучая.',
-  u:[{n:'Рой ×2',cost:20,count:2,hp:28,dmg:5,range:16,speed:115,rate:.7},
+  u:[{n:'Рой ×2',cost:20,count:2,hp:26,dmg:5,range:16,speed:115,rate:.7},
      {n:'Хищник',cost:45,hp:90,dmg:12,range:18,speed:100,rate:.9},
-     {n:'Бугай',cost:90,hp:260,dmg:20,range:20,speed:55,rate:1.1}]},
+     {n:'Бугай',cost:90,hp:260,dmg:20,range:20,speed:55,rate:1.1},
+     {n:'Левиафан',cost:240,hp:560,dmg:26,range:24,speed:50,rate:1.1,splash:45,ult:1}]},
  magic:{n:'Адепты Астрала',c:'#c084fc',res:'Эссенция',start:120,base:2,node:6,
   curve:()=>1,
   info:'Дух призывается ритуалом: поставь Послушника на свою точку и жми «Дух»: 5 с он колдует (убьют — сорвано). Доход почти только с точек.',
   u:[{n:'Послушник',cost:40,hp:55,dmg:8,range:100,speed:70,rate:1},
      {n:'Элементаль',cost:90,hp:150,dmg:16,range:70,speed:55,rate:1.2,splash:45},
-     {n:'Дух 30с',cost:120,hp:90,dmg:34,range:130,speed:85,rate:1,life:30,ritual:1}]}
+     {n:'Дух 30с',cost:120,hp:90,dmg:34,range:130,speed:85,rate:1,life:30,ritual:1},
+     {n:'Аватар',cost:240,hp:240,dmg:38,range:120,speed:55,rate:1.2,splash:60,ritual:1,ult:1}]}
 };
 
 /* ===== БЛОК 4. ПЕРЕМЕННЫЕ ИГРЫ =====
@@ -84,7 +87,8 @@ let W,H,P,units,nodes,fx,res,fac,time,core,running=false,bot,cat,diff=1,ttl='',h
 /* Онлайн: online = идёт ли матч по сети; me = моя команда (0 хозяин, 1 гость); peer/conn = связь;
    mode = что выбирает игрок в меню (solo/host/join); uid = счётчик номеров юнитов;
    selIds = номера выбранных мной юнитов (нужны гостю). */
-let online=0,me=0,peer,conn,mode='solo',uid=0,snapT=0;const selIds=new Set();
+let online=0,me=0,peer,conn,mode='solo',uid=0,snapT=0,lvl=[1,1];
+const UP=180;   /* lvl[t] = уровень базы команды t (1 или 2); UP = цена улучшения */const selIds=new Set();
 /* Камера: cam.x,cam.y = левый верхний угол видимой части мира, cam.z = масштаб;
    DPR = плотность пикселей экрана (для чёткой картинки).
    bots[t] = «мозг» бота команды t; botT[t]=1 — командой t управляет бот. */
@@ -104,7 +108,7 @@ function menu(title){
  $('ov').style.display='flex';
  $('ov').innerHTML='<div class="box"><h2>'+(ttl||'Аномалия: Три Пути')+'</h2>'+
  '<p>Бой против бота или онлайн 1v1 с другом. Нажми на своего бойца — он выберется, или протяни палец по полю — рамка выберет всех внутри. Нажми на землю — пойдёт туда, на врага — атакует. '+
- 'Стой на точках, чтобы захватить: они дают ресурс. Ядро в центре открывается на 4-й минуте: удержи его 120 секунд или разрушь базу врага. Двумя пальцами двигай и приближай карту. Каждые 2,5 минуты — катаклизм.</p>'+
+ 'Стой на точках, чтобы захватить: они дают ресурс. Ядро в центре открывается на 4-й минуте: удержи его 120 секунд или разрушь базу врага. Двумя пальцами двигай и приближай карту. Кнопка «База ↑» открывает ультимативного юнита. Каждые 2,5 минуты — катаклизм.</p>'+
  '<p>Сложность бота: '+['Лёгкая','Нормальная','Сложная'].map((n,i)=>'<button onclick="diff='+i+';menu()" style="padding:6px 10px;'+(diff==i?'border:2px solid #ffd54a':'')+'">'+n+'</button>').join(' ')+'</p>'+
  '<p>Онлайн 1v1: <button onclick="setMode(\'host\')">Создать комнату</button> <button onclick="setMode(\'join\')">Войти по коду</button></p>'+
  '<p><button onclick="simTest(10)">Тест баланса: боты играют сами</button></p>'+
@@ -119,11 +123,11 @@ function end(win,why){running=false;mode='solo';if(online){online=0;setTimeout((
    pos(a,b) переводит «доли карты» в пиксели, а на вертикальном
    телефоне поворачивает карту: твоя база внизу, вражеская вверху. */
 function start(fp,fp2){
- P=innerHeight>innerWidth;W=P?810:1440;H=P?1200:840;   // мир в 1.5 раза больше прежнего
+ P=innerHeight>innerWidth;W=P?840:1440;H=P?1440:840;   // вертикальная карта = та же карта, повёрнутая, поэтому баланс не зависит от экрана
  const others=Object.keys(F).filter(k=>k!=fp);
  fac=[fp,fp2||others[Math.random()*2|0]];
  res=[F[fp].start,F[fac[1]].start];
- time=0;core=[0,0];fx=[];units=[];bots=[{buy:3,order:5},{buy:3,order:5}];botT=[0,1];cat=150;hintT=0;me=0;uid=0;snapT=0;
+ time=0;core=[0,0];fx=[];units=[];bots=[{buy:3,order:5},{buy:3,order:5}];botT=[0,1];lvl=[1,1];cat=150;hintT=0;me=0;uid=0;snapT=0;
  const pos=(a,b)=>P?{x:b*W,y:(1-a)*H}:{x:a*W,y:b*H};
  let p=pos(.08,.5),q=pos(.92,.5);
  units.push(mk(0,p.x,p.y,{hp:5000,dmg:24,range:150,speed:0,rate:1},{r:28,base:1}));
@@ -173,7 +177,8 @@ function mkBtns(fp){
 }
 function act(i){
  if(guest()){send({t:'b',i});return}
- const d=F[fac[me]].u[i];d.ritual?ritual(me,d):buy(me,d);
+ const d=F[fac[me]].u[i];if(d.ult&&lvl[me]<2){say('Нужна база уровня 2');return}
+ d.ritual?ritual(me,d):buy(me,d);
 }
 /* Подгоняет размер поля под экран, сохраняя пропорции */
 function fit(){
@@ -190,11 +195,11 @@ addEventListener('resize',fit);
 const mk=(team,x,y,d,extra)=>({...d,id:++uid,team,f:fac[team],x,y,r:9,max:d.hp,cd:0,mx:null,my:null,tgt:null,stun:0,sel:false,...extra});
 /* buy(): списывает ресурс и ставит бойцов рядом со своей базой */
 function buy(t,d){
- if(res[t]<d.cost)return;res[t]-=d.cost;
+ if(res[t]<d.cost||!canUlt(t,d))return;res[t]-=d.cost;
  const b=units[t];
  for(let i=0;i<(d.count||1);i++){
   const k=rnd(40,70),s=rnd(-40,40);
-  units.push(mk(t,P?b.x+s:b.x+(t?-k:k),P?b.y+(t?k:-k):b.y+s,d,{gr:d.ritual?5:F[fac[t]].grow||0})); // gr = секунд в коконе
+  units.push(mk(t,P?b.x+s:b.x+(t?-k:k),P?b.y+(t?k:-k):b.y+s,d,{gr:d.ritual?5:F[fac[t]].grow||0,r:d.ult?14:9})); // gr = секунд в коконе
  }
 }
 
@@ -205,7 +210,7 @@ function buy(t,d){
      Гибрид повторно не сращивается (fz).
    cataclysm() — случайное событие для всех, раз в 150 секунд. */
 function ritual(t,d){
- if(res[t]<d.cost)return;
+ if(res[t]<d.cost||!canUlt(t,d))return;
  const a=units.find(u=>u.team===t&&u.hp>0&&u.n==='Послушник'&&!u.rit&&nodes.some(n=>n.o===t&&dist(u,n)<n.r+8));
  if(!a){say('Нужен Послушник на своей точке');return}
  res[t]-=d.cost;a.rit=5;a.rd=d;a.mx=null;a.tgt=null;
@@ -227,6 +232,21 @@ function cataclysm(){
  if(e===0){units.forEach(u=>{if(!u.base)u.hp-=u.max*.2});say('Кислотный дождь: −20% здоровья')}
  else if(e===1){units.forEach(u=>u.stun=2);say('Кибершторм: все оглушены на 2 с')}
  else{nodes.forEach(n=>{n.o=null;n.p=0});say('Астральный разлом: точки сброшены')}
+}
+
+/* ===== УРОВЕНЬ БАЗЫ И УЛЬТИМАТИВНЫЙ ЮНИТ =====
+   upBase(): за UP ресурса база становится уровня 2 — открывается 4-й (ультимативный) юнит.
+   canUlt(): можно ли нанять юнита d: обычного — всегда; ультимативного — только на уровне 2
+   и только если такой уже не живёт, не вызревает в коконе и не вызывается ритуалом. */
+function upBase(t=me){
+ if(guest()){send({t:'u'});return}
+ if(lvl[t]>=2){if(t===me)say('База уже улучшена');return}
+ if(res[t]<UP){if(t===me)say('Нужно '+UP+' ресурса');return}
+ res[t]-=UP;lvl[t]=2;if(t===me)say('База ур.2: открыт ультимативный юнит');
+}
+function canUlt(t,d){
+ if(!d.ult)return true;if(lvl[t]<2)return false;
+ return!units.some(u=>u.team===t&&u.hp>0&&(u.ult||(u.rit>0&&u.rd&&u.rd.ult)));
 }
 
 /* ===== БЛОК 8. БОЙ И ДВИЖЕНИЕ ===== */
@@ -268,8 +288,9 @@ function onSlime(u){return dist(u,units[u.team])<180||nodes.some(n=>n.o===u.team
    армия большая — штурм базы врага; иначе — захват ближайшей чужой точки. */
 function botThink(t,dt){
  const B=bots[t];B.buy-=dt;B.order-=dt;
+ if(lvl[t]<2&&time>150&&res[t]>=UP+80)upBase(t);   // бот улучшает базу после 2:30
  if(B.buy<=0){B.buy=[3.5,2.5,1.8][diff];
-  const o=F[fac[t]].u.filter(d=>d.cost<=res[t]);
+  const o=F[fac[t]].u.filter(d=>d.cost<=res[t]&&canUlt(t,d));
   if(o.length)buy(t,Math.random()<.6?o[o.length-1]:o[Math.random()*o.length|0]);
  }
  if(B.order<=0){B.order=5;
@@ -313,7 +334,7 @@ function update(dt){
   if(u.life!=null&&(u.life-=dt)<=0)u.hp=0;            // духи исчезают по таймеру
   if(F[u.f].regen&&!u.base)u.hp=Math.min(u.max,u.hp+u.max*F[u.f].regen*(1+time/180)*(onSlime(u)?F[u.f].slime:1)*dt); // самолечение био: % здоровья в секунду, растёт со временем, на слизи ×2.5 // самолечение био
   if(u.gr>0){u.gr-=dt;return}                         // кокон: юнит ещё вызревает
-  if(u.rit>0){if((u.rit-=dt)<=0)units.push(mk(u.team,u.x+14,u.y,u.rd,{gr:0}));return} // ритуал: Дух появится, когда жрец дочитает
+  if(u.rit>0){if((u.rit-=dt)<=0)units.push(mk(u.team,u.x+14,u.y,u.rd,{gr:0,r:u.rd.ult?14:9}));return} // ритуал: Дух появится, когда жрец дочитает
   if(u.stun>0){u.stun-=dt;return}                     // оглушённый стоит
   u.cd-=dt;
   // цель: приказ игрока важнее; иначе ближайший враг (стоящий юнит замечает дальше)
@@ -388,7 +409,10 @@ function draw(){
 function ui(){
  $('hud').textContent=F[fac[me]].res+': '+(res[me]|0)+' (+'+income(me).toFixed(1)+'/с) · '+fmt(time)+
   ' · Ядро: ты '+(core[me]|0)+'/120, враг '+(core[1-me]|0)+'/120 · враг: '+F[fac[1-me]].n;
- [...$('buy').children].forEach((b,i)=>b.disabled=res[me]<F[fac[me]].u[i].cost);
+ [...$('buy').children].forEach((b,i)=>{
+  const d=F[fac[me]].u[i],lock=d.ult&&lvl[me]<2,h='<b>'+d.n+'</b><br>'+d.cost+(lock?' 🔒':'');
+  if(b._h!==h){b._h=h;b.innerHTML=h}b.disabled=res[me]<d.cost||lock});
+ const up=$('up');up.textContent=lvl[me]>=2?'База: ур.2':'База ↑ '+UP;up.disabled=lvl[me]>=2||res[me]<UP;
 }
 
 /* ===== БЛОК 12. УПРАВЛЕНИЕ (касания и клики) =====
@@ -456,6 +480,7 @@ cv.addEventListener('wheel',e=>{
 },{passive:false});
 /* «Все войска»: выбирает всех твоих бойцов, повторное нажатие — снимает выбор */
 $('fuse').onclick=()=>fuse();
+$('up').onclick=()=>upBase();
 $('home').onclick=()=>centerOn(homePos());   // камера к своей базе
 $('all').onclick=()=>{
  if(!running)return;
@@ -484,6 +509,7 @@ function hostRoom(k){
    else if(m.t==='o')doOrder(1,m.ids,m.fid,m.x,m.y);
    else if(m.t==='b'){const d=F[fac[1]].u[m.i];if(d)d.ritual?ritual(1,d):buy(1,d)}
    else if(m.t==='f')fuse(1);
+   else if(m.t==='u')upBase(1);
   });
   c.on('close',()=>{if(running)end(true,'Соперник вышел.')});
  });
@@ -504,20 +530,20 @@ function joinRoom(k){
 function guestGo(m){
  me=1;online=1;P=m.P;W=m.W;H=m.H;fac=m.fac;
  nodes=m.nodes.map(a=>{const q=fl(a[0],a[1]);return{x:q[0],y:q[1],r:a[2],o:null,p:0,core:a[3]}});
- units=[];fx=[];res=[0,0];core=[0,0];time=0;hintT=0;selIds.clear();
+ units=[];fx=[];res=[0,0];core=[0,0];time=0;hintT=0;selIds.clear();lvl=[1,1];
  mkBtns(fac[1]);$('ov').style.display='none';running=true;ui();fit();camInit();
 }
 /* snap(): хозяин упаковывает мир в компактные массивы и шлёт гостю (не чаще 12 раз/с) */
 function snap(){
  const n=performance.now();if(n-snapT<80)return;snapT=n;
- send({t:'s',tm:time,r:[res[0]|0,res[1]|0],c:[core[0]|0,core[1]|0],h:hintT>0?hint:'',
+ send({t:'s',l:lvl,tm:time,r:[res[0]|0,res[1]|0],c:[core[0]|0,core[1]|0],h:hintT>0?hint:'',
   n:nodes.map(a=>[a.o,Math.round(a.p*100)/100]),
   u:units.filter(u=>u.hp>0).map(u=>[u.id,u.team,u.f,Math.round(u.x),Math.round(u.y),Math.round(u.hp),Math.round(u.max),u.r,u.base?1:0,u.gr>0?1:0,u.rit>0?1:0,u.stun>0?1:0,u.fz?1:0]),
   x:fx.filter(f=>f.x2!==undefined).map(f=>[Math.round(f.x),Math.round(f.y),Math.round(f.x2),Math.round(f.y2),f.c])});
 }
 /* onSnap(): гость превращает снимок обратно в юнитов/точки/эффекты (с зеркалом координат) */
 function onSnap(m){
- time=m.tm;res=m.r;core=m.c;
+ time=m.tm;res=m.r;core=m.c;lvl=m.l;
  units=m.u.map(a=>{const q=fl(a[3],a[4]);return{id:a[0],team:a[1],f:a[2],x:q[0],y:q[1],hp:a[5],max:a[6],r:a[7],base:a[8],gr:a[9],rit:a[10],stun:a[11],fz:a[12],sel:selIds.has(a[0])}});
  nodes.forEach((n,i)=>{n.o=m.n[i][0];n.p=m.n[i][1]});
  fx=m.x.map(a=>{const p=fl(a[0],a[1]),q=fl(a[2],a[3]);return{x:p[0],y:p[1],x2:q[0],y2:q[1],ttl:.15,c:a[4]}});
@@ -556,6 +582,10 @@ function simTest(N){
  };
  step();
 }
+
+/* Запрет жестов приближения всей страницы (двойной тап по кнопкам и щипок вне поля) */
+document.addEventListener('dblclick',e=>e.preventDefault());
+['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault()));
 
 /* ===== БЛОК 13. ЗАПУСК =====
    Бесконечный цикл: считаем шаг игры, рисуем, показываем панель. */
