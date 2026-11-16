@@ -21,7 +21,7 @@ canvas{background:#10131a;touch-action:none}  /* touch-action: страница 
 #pn{width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:6px;background:var(--pn);border-top:1px solid var(--ln)}
 #buy,#ctl{display:flex;gap:6px}
 #buy button{flex:1}
-#ctl button{flex:1;padding:8px 4px;font-size:12px}
+#ctl button{flex:1;padding:8px 2px;font-size:11px}
 button{touch-action:manipulation;font:inherit;color:var(--tx);background:var(--bt);border:1px solid var(--ln);border-radius:10px;padding:8px 6px}
 button:disabled{opacity:.4}
 #ov{position:fixed;inset:0;background:rgba(8,10,14,.92);display:flex;align-items:center;justify-content:center;overflow:auto}
@@ -37,7 +37,7 @@ button:disabled{opacity:.4}
 <div id="app">
  <div id="hud"></div>
  <canvas id="cv"></canvas>
- <div id="pn"><div id="buy"></div><div id="ctl"><button id="up">База ↑</button><button id="fuse" style="display:none">Сращивание</button><button id="home">К базе</button><button id="all">Все войска</button></div></div>
+ <div id="pn"><div id="buy"></div><div id="ctl"><button id="up">База ↑</button><button id="bld">Здание</button><button id="fuse" style="display:none">Сращивание</button><button id="home">К базе</button><button id="all">Все войска</button></div></div>
 </div>
 <div id="ov"></div>
 
@@ -50,26 +50,29 @@ button:disabled{opacity:.4}
    техно растёт к концу, био падает, маги не зависят от времени.
    u = список юнитов: cost = цена, hp = здоровье, dmg = урон за удар,
    range = дальность, speed = скорость, rate = секунд между ударами.
-   Особенности: count = сколько юнитов за раз, zap = оглушение (сек), hack = угон вражеского юнита на N сек, grow = секунд «вызревания» в коконе, ritual = только через ритуал, ult = ультимативный юнит (нужна база ур.2, один на игрока),
+   Особенности: count = сколько юнитов за раз, zap = оглушение (сек), hack = угон вражеского юнита на N сек, grow = секунд «вызревания» в коконе, ritual = только через ритуал, ult = ультимативный юнит (нужна база ур.2, один на игрока), bld = здание фракции на точке (турель стреляет, гнездо рождает рой, храм даёт +4 дохода и ускоряет ритуал),
    splash = радиус урона по площади, life = время жизни (сек). */
 const F={
  techno:{n:'Нео-Сема',c:'#38bdf8',res:'Энергия',start:100,base:5,node:3,
   curve:t=>Math.min(1.2,.7+t/150),
-  info:'Дальний бой и быстро растущий доход, но юниты дорогие. Хакеры угоняют вражеских юнитов на 10 с.',
+  bld:{k:'tur',n:'Турель',s:'Турель',cost:90,hp:320,dmg:10,range:150,rate:1},
+  info:'Дальний бой и быстро растущий доход, но юниты дорогие. Здание: турель. Хакеры угоняют вражеских юнитов на 10 с.',
   u:[{n:'Дрон',cost:32,hp:40,dmg:6,range:110,speed:75,rate:.8},
      {n:'Киборг',cost:60,hp:100,dmg:12,range:120,speed:60,rate:1},
      {n:'Хакер',cost:80,hp:60,dmg:4,range:150,speed:60,rate:5,hack:10},
      {n:'Мех-Титан',cost:240,hp:420,dmg:30,range:140,speed:45,rate:1.2,ult:1}]},
  bio:{n:'Био-Генезис',c:'#84cc16',res:'Биомасса',start:160,base:6,node:2,regen:.05,slime:2.5,grow:3,
   curve:t=>Math.max(.7,1.4-t/300),
-  info:'Дешёвый рой, юниты вызревают в коконах. Лечатся тем быстрее, чем дольше бой, а на своей слизи (у базы и захваченных точек) — ещё быстрее. Кнопка «Сращивание» (выбери двоих) делает гибрида. Доход падает, зато армия живучая.',
+  bld:{k:'nest',n:'Гнездо',s:'Гнездо',cost:80,hp:260,dmg:0,range:0,rate:1,spawn:14},
+  info:'Дешёвый рой, юниты вызревают в коконах. Лечатся тем быстрее, чем дольше бой, а на своей слизи (у базы и захваченных точек) — ещё быстрее. Кнопка «Сращивание» (выбери двоих) делает гибрида. Доход падает, зато армия живучая. Здание: гнездо, само рождает рой.',
   u:[{n:'Рой ×2',cost:20,count:2,hp:26,dmg:5,range:16,speed:115,rate:.7},
      {n:'Хищник',cost:45,hp:90,dmg:12,range:18,speed:100,rate:.9},
      {n:'Бугай',cost:90,hp:260,dmg:20,range:20,speed:55,rate:1.1},
      {n:'Левиафан',cost:240,hp:560,dmg:26,range:24,speed:50,rate:1.1,splash:45,ult:1}]},
  magic:{n:'Адепты Астрала',c:'#c084fc',res:'Эссенция',start:120,base:2,node:6,
   curve:()=>1,
-  info:'Дух призывается ритуалом: поставь Послушника на свою точку и жми «Дух»: 5 с он колдует (убьют — сорвано). Доход почти только с точек.',
+  bld:{k:'sanct',n:'Святилище',s:'Храм',cost:90,hp:280,dmg:0,range:0,rate:1},
+  info:'Дух призывается ритуалом: поставь Послушника на свою точку и жми «Дух»: 5 с он колдует (убьют — сорвано). Доход почти только с точек. Здание: храм, ускоряет ритуал и даёт эссенцию.',
   u:[{n:'Послушник',cost:40,hp:55,dmg:8,range:100,speed:70,rate:1},
      {n:'Элементаль',cost:90,hp:150,dmg:16,range:70,speed:55,rate:1.2,splash:45},
      {n:'Дух 30с',cost:120,hp:90,dmg:34,range:130,speed:85,rate:1,life:30,ritual:1},
@@ -87,7 +90,7 @@ let W,H,P,units,nodes,fx,res,fac,time,core,running=false,bot,cat,diff=1,ttl='',h
 /* Онлайн: online = идёт ли матч по сети; me = моя команда (0 хозяин, 1 гость); peer/conn = связь;
    mode = что выбирает игрок в меню (solo/host/join); uid = счётчик номеров юнитов;
    selIds = номера выбранных мной юнитов (нужны гостю). */
-let online=0,me=0,peer,conn,mode='solo',uid=0,snapT=0,lvl=[1,1];
+let online=0,me=0,peer,conn,mode='solo',uid=0,snapT=0,lvl=[1,1],buildMode=false;
 const UP=180;   /* lvl[t] = уровень базы команды t (1 или 2); UP = цена улучшения */const selIds=new Set();
 /* Камера: cam.x,cam.y = левый верхний угол видимой части мира, cam.z = масштаб;
    DPR = плотность пикселей экрана (для чёткой картинки).
@@ -108,7 +111,7 @@ function menu(title){
  $('ov').style.display='flex';
  $('ov').innerHTML='<div class="box"><h2>'+(ttl||'Аномалия: Три Пути')+'</h2>'+
  '<p>Бой против бота или онлайн 1v1 с другом. Нажми на своего бойца — он выберется, или протяни палец по полю — рамка выберет всех внутри. Нажми на землю — пойдёт туда, на врага — атакует. '+
- 'Стой на точках, чтобы захватить: они дают ресурс. Ядро в центре открывается на 4-й минуте: удержи его 120 секунд или разрушь базу врага. Двумя пальцами двигай и приближай карту. Кнопка «База ↑» открывает ультимативного юнита. Каждые 2,5 минуты — катаклизм.</p>'+
+ 'Стой на точках, чтобы захватить: они дают ресурс. Ядро в центре открывается на 4-й минуте: удержи его 120 секунд или разрушь базу врага. Двумя пальцами двигай и приближай карту. Кнопка «База ↑» открывает ультимативного юнита, кнопка со зданием строит его на твоей захваченной точке. Каждые 2,5 минуты — катаклизм.</p>'+
  '<p>Сложность бота: '+['Лёгкая','Нормальная','Сложная'].map((n,i)=>'<button onclick="diff='+i+';menu()" style="padding:6px 10px;'+(diff==i?'border:2px solid #ffd54a':'')+'">'+n+'</button>').join(' ')+'</p>'+
  '<p>Онлайн 1v1: <button onclick="setMode(\'host\')">Создать комнату</button> <button onclick="setMode(\'join\')">Войти по коду</button></p>'+
  '<p><button onclick="simTest(10)">Тест баланса: боты играют сами</button></p>'+
@@ -127,7 +130,7 @@ function start(fp,fp2){
  const others=Object.keys(F).filter(k=>k!=fp);
  fac=[fp,fp2||others[Math.random()*2|0]];
  res=[F[fp].start,F[fac[1]].start];
- time=0;core=[0,0];fx=[];units=[];bots=[{buy:3,order:5},{buy:3,order:5}];botT=[0,1];lvl=[1,1];cat=150;hintT=0;me=0;uid=0;snapT=0;
+ time=0;core=[0,0];fx=[];units=[];bots=[{buy:3,order:5},{buy:3,order:5}];botT=[0,1];lvl=[1,1];buildMode=false;cat=150;hintT=0;me=0;uid=0;snapT=0;
  const pos=(a,b)=>P?{x:b*W,y:(1-a)*H}:{x:a*W,y:b*H};
  let p=pos(.08,.5),q=pos(.92,.5);
  units.push(mk(0,p.x,p.y,{hp:5000,dmg:24,range:150,speed:0,rate:1},{r:28,base:1}));
@@ -218,7 +221,7 @@ function ritual(t,d){
 function fuse(t=me){
  if(guest()){send({t:'f'});return}
  if(!running||fac[t]!=='bio')return;
- const ok=u=>u.team===t&&!u.base&&!u.fz&&!(u.gr>0)&&u.hp>0;   // кого можно сращивать
+ const ok=u=>u.team===t&&!u.base&&!u.bld&&!u.fz&&!(u.gr>0)&&u.hp>0;   // кого можно сращивать
  let s=units.filter(u=>ok(u)&&u.sel);
  if(s.length<2)s=units.filter(ok);                          // выбрано меньше двух — берём всех своих
  if(s.length<2){say('Нужно минимум два юнита');return}
@@ -249,6 +252,20 @@ function canUlt(t,d){
  return!units.some(u=>u.team===t&&u.hp>0&&(u.ult||(u.rit>0&&u.rd&&u.rd.ult)));
 }
 
+/* ===== ЗДАНИЯ НА ТОЧКАХ =====
+   Кнопка «Здание» включает режим стройки: нажми на свою захваченную точку (кроме Ядра) — там
+   вырастет здание фракции (3 секунды в «коконе»). На точке одно здание. place(t,i) строит команде t
+   на точке номер i. Здание — юнит без движения (bld = вид, nd = его точка): враги могут его
+   атаковать. Потеряешь точку — здание разрушится. Турель стреляет; гнездо (spw) каждые 14 с
+   рождает бесплатный рой; храм даёт +4 к доходу и вдвое ускоряет ритуал рядом (sanctNear). */
+function place(t,i){
+ const n=nodes[i],b=F[fac[t]].bld;
+ if(!n||n.core||n.o!==t||res[t]<b.cost||units.some(u=>u.bld&&u.nd===n&&u.hp>0)){if(t===me)say('Нужна своя свободная точка');return}
+ res[t]-=b.cost;
+ units.push(mk(t,n.x,n.y,{hp:b.hp,dmg:b.dmg,range:b.range,speed:0,rate:b.rate},{r:14,bld:b.k,nd:n,gr:3,sp:b.spawn||0,spw:b.spawn||0}));
+}
+const sanctNear=u=>units.some(b=>b.bld==='sanct'&&b.team===u.team&&b.hp>0&&!(b.gr>0)&&dist(b,u)<140);
+
 /* ===== БЛОК 8. БОЙ И ДВИЖЕНИЕ ===== */
 /* nearest(): ближайший враг в пределах reach (или null) */
 function nearest(u,reach){
@@ -271,13 +288,13 @@ function hit(u,t){
  u.cd=u.rate;t.hp-=u.dmg;
  if(u.splash)units.forEach(e=>{if(e.team!==u.team&&e!==t&&dist(e,t)<u.splash)e.hp-=u.dmg*.6});
  if(u.zap)t.stun=u.zap;
- if(u.hack&&!t.base&&!t.hj){t.hj=u.hack;t.team=u.team;t.tgt=null;t.mx=null;t.sel=false} // ВЗЛОМ: цель временно переходит на твою сторону
+ if(u.hack&&!t.base&&!t.bld&&!t.hj){t.hj=u.hack;t.team=u.team;t.tgt=null;t.mx=null;t.sel=false} // ВЗЛОМ: цель временно переходит на твою сторону
  fx.push({x:u.x,y:u.y,x2:t.x,y2:t.y,ttl:.15,c:F[u.f].c});
 }
 /* income(): доход команды t в секунду = (база + точки×бонус) × кривая времени */
 function income(t){
  const f=F[fac[t]],k=nodes.filter(n=>n.o===t).length;
- return(f.base+k*f.node)*f.curve(time)*(t&&!online?[.8,1,1.3][diff]:1); // у бота доход зависит от сложности
+ return(f.base+k*f.node+units.filter(b=>b.team===t&&b.bld==='sanct'&&b.hp>0&&!(b.gr>0)).length*4)*f.curve(time)*(t&&!online?[.8,1,1.3][diff]:1); // у бота доход зависит от сложности
 }
 
 /* onSlime(): юнит стоит на «слизи» — в 180 пикселях от своей базы или у своей захваченной точки.
@@ -290,11 +307,13 @@ function botThink(t,dt){
  const B=bots[t];B.buy-=dt;B.order-=dt;
  if(lvl[t]<2&&time>150&&res[t]>=UP+80)upBase(t);   // бот улучшает базу после 2:30
  if(B.buy<=0){B.buy=[3.5,2.5,1.8][diff];
+  const bd=F[fac[t]].bld,fn=nodes.findIndex(n=>!n.core&&n.o===t&&!units.some(u=>u.bld&&u.nd===n&&u.hp>0));
+  if(fn>=0&&time>90&&res[t]>=bd.cost+40)place(t,fn);   // бот строит здание на свободной своей точке
   const o=F[fac[t]].u.filter(d=>d.cost<=res[t]&&canUlt(t,d));
   if(o.length)buy(t,Math.random()<.6?o[o.length-1]:o[Math.random()*o.length|0]);
  }
  if(B.order<=0){B.order=5;
-  const army=units.filter(u=>u.team===t&&!u.base);
+  const army=units.filter(u=>u.team===t&&!u.base&&!u.bld);
   if(fac[t]==='bio'&&army.filter(u=>!u.fz&&!(u.gr>0)).length>=2)fuse(t);   // био-бот сращивает юнитов
   const th=units.find(e=>e.team!==t&&!e.base&&e.hp>0&&dist(e,units[t])<260);
   army.forEach(u=>{
@@ -318,13 +337,14 @@ function update(dt){
  nodes.forEach(n=>{                                   // 2) захват точек
   if(n.core&&time<240)return;   // Ядро закрыто до 4:00
   let a=0,b=0;
-  units.forEach(u=>{if(!u.base&&u.hp>0&&dist(u,n)<n.r+8)u.team?b++:a++});
+  units.forEach(u=>{if(!u.base&&!u.bld&&u.hp>0&&dist(u,n)<n.r+8)u.team?b++:a++});
   if(a&&!b)n.p=Math.min(1,n.p+dt*.12*Math.min(a,4)); // p от -1 (бот) до +1 (ты)
   else if(b&&!a)n.p=Math.max(-1,n.p-dt*.12*Math.min(b,4));
   if(n.o===0&&n.p<=0)n.o=null;
   if(n.o===1&&n.p>=0)n.o=null;
   if(n.p>=1)n.o=0;if(n.p<=-1)n.o=1;
  });
+ units.forEach(b=>{if(b.bld&&b.hp>0&&b.nd.o!==b.team)b.hp=0});   // потеряли точку — здание разрушено
  const c=nodes[4];                                    // 3) таймер Ядра
  core[0]=c.o===0?core[0]+dt:0;core[1]=c.o===1?core[1]+dt:0;
 
@@ -334,9 +354,10 @@ function update(dt){
   if(u.life!=null&&(u.life-=dt)<=0)u.hp=0;            // духи исчезают по таймеру
   if(F[u.f].regen&&!u.base)u.hp=Math.min(u.max,u.hp+u.max*F[u.f].regen*(1+time/180)*(onSlime(u)?F[u.f].slime:1)*dt); // самолечение био: % здоровья в секунду, растёт со временем, на слизи ×2.5 // самолечение био
   if(u.gr>0){u.gr-=dt;return}                         // кокон: юнит ещё вызревает
-  if(u.rit>0){if((u.rit-=dt)<=0)units.push(mk(u.team,u.x+14,u.y,u.rd,{gr:0,r:u.rd.ult?14:9}));return} // ритуал: Дух появится, когда жрец дочитает
+  if(u.rit>0){if((u.rit-=dt*(sanctNear(u)?2:1))<=0)units.push(mk(u.team,u.x+14,u.y,u.rd,{gr:0,r:u.rd.ult?14:9}));return} // ритуал: Дух появится, когда жрец дочитает
   if(u.stun>0){u.stun-=dt;return}                     // оглушённый стоит
   u.cd-=dt;
+  if(u.spw&&(u.sp-=dt)<=0){u.sp=u.spw;const d=F[u.f].u[0];for(let k=0;k<(d.count||1);k++)units.push(mk(u.team,u.x+rnd(-24,24),u.y+rnd(-24,24),d,{gr:1}))}   // гнездо рождает рой
   // цель: приказ игрока важнее; иначе ближайший враг (стоящий юнит замечает дальше)
   let t=u.tgt&&u.tgt.hp>0?u.tgt:(u.tgt=null,nearest(u,u.range+(u.mx==null?80:0)));
   if(t&&dist(u,t)-t.r<=u.range){if(u.cd<=0)hit(u,t)}  // в зоне удара — бьём
@@ -380,6 +401,8 @@ function draw(){
   g.strokeStyle=n.p>0?F[fac[0]].c:F[fac[1]].c;g.stroke();
   if(n.core){g.fillStyle='#fff';g.font='12px sans-serif';g.textAlign='center';g.fillText(time<240?'ЯДРО '+fmt(240-time):'ЯДРО',n.x,n.y+4)}
  });
+ if(buildMode)nodes.forEach(n=>{                        // подсветка точек, куда можно построить
+  if(!n.core&&n.o===me&&!units.some(u=>u.bld&&dist(u,n)<8)){g.beginPath();g.arc(n.x,n.y,n.r+10,0,7);g.strokeStyle='#ffd54a';g.lineWidth=3;g.stroke()}});
  units.forEach(u=>{                                   // юниты и базы
   if(u.hp<=0)return;
   const c=F[u.f].c,r=u.r;
@@ -389,6 +412,7 @@ function draw(){
   else{g.moveTo(u.x,u.y-r-2);g.lineTo(u.x+r,u.y+r);g.lineTo(u.x-r,u.y+r);g.closePath()}
   g.globalAlpha=u.gr>0?.4:1;g.fillStyle=c;g.fill();g.globalAlpha=1;   // кокон полупрозрачный
   if(u.rit>0){g.beginPath();g.arc(u.x,u.y,r+8,0,7);g.strokeStyle=c;g.lineWidth=2;g.stroke()} // кольцо ритуала
+  if(u.bld){g.fillStyle='#fff';g.font='12px sans-serif';g.textAlign='center';g.fillText(u.bld==='tur'?'Т':u.bld==='nest'?'Г':'С',u.x,u.y+4)}
   if(u.team===me){g.strokeStyle='#fff';g.lineWidth=2;g.stroke()}else{g.strokeStyle='#f43f5e';g.lineWidth=2;g.stroke()} // свои — белая кайма, чужие — красная   // твои — с белой каймой
   if(u.sel){g.beginPath();g.arc(u.x,u.y,r+5,0,7);g.strokeStyle='#ffd54a';g.lineWidth=2;g.stroke()}
   if(u.stun>0){g.fillStyle='#ffd54a';g.fillText('⚡',u.x,u.y-r-8)}
@@ -413,6 +437,7 @@ function ui(){
   const d=F[fac[me]].u[i],lock=d.ult&&lvl[me]<2,h='<b>'+d.n+'</b><br>'+d.cost+(lock?' 🔒':'');
   if(b._h!==h){b._h=h;b.innerHTML=h}b.disabled=res[me]<d.cost||lock});
  const up=$('up');up.textContent=lvl[me]>=2?'База: ур.2':'База ↑ '+UP;up.disabled=lvl[me]>=2||res[me]<UP;
+ const bd=F[fac[me]].bld,bb=$('bld');bb.textContent=buildMode?'Отмена':bd.s+' '+bd.cost;bb.disabled=!buildMode&&res[me]<bd.cost;
 }
 
 /* ===== БЛОК 12. УПРАВЛЕНИЕ (касания и клики) =====
@@ -434,7 +459,12 @@ function doOrder(t,ids,fid,x,y){
 function tap(e){
  if(!running)return;
  const p=pt(e);   // экран → координаты мира
- const mine=units.find(u=>u.team===me&&!u.base&&u.hp>0&&dist(u,p)<22/Math.min(1,cam.z));
+ if(buildMode){                                         // режим стройки: тап по своей свободной точке
+  buildMode=false;const i=nodes.findIndex(n=>!n.core&&n.o===me&&dist(n,p)<n.r+24);
+  if(i<0){say('Нужна своя свободная точка');return}
+  if(guest())send({t:'p',i});else place(me,i);return;
+ }
+ const mine=units.find(u=>u.team===me&&!u.base&&!u.bld&&u.hp>0&&dist(u,p)<22/Math.min(1,cam.z));
  if(mine){setSel(mine,!mine.sel);return}
  const foe=units.find(u=>u.team!==me&&u.hp>0&&dist(u,p)<u.r+14/Math.min(1,cam.z));
  order(units.filter(u=>u.sel&&u.team===me).map(u=>u.id),foe?foe.id:0,p.x,p.y);
@@ -442,38 +472,48 @@ function tap(e){
 }
 /* Рамка выделения: зажми палец на пустом месте и протяни — выберутся все твои юниты внутри.
    Короткое касание (без протяжки) работает как раньше — это функция tap() выше. */
-let dr=null;   // dr = рамка выделения {x,y — начало; x2,y2 — конец (в мире); on — тянется ли}
+let dr=null;   // dr = тап/рамка одним пальцем {id — номер пальца; x,y — начало; x2,y2 — конец (в мире); sx,sy — начало на экране; on — тянется ли рамка}
 const ptr=new Map();   // активные касания: номер пальца → позиция на экране
-let pinch=null;        // состояние жеста двумя пальцами (камера)
+let pinch=null;        // жест двумя пальцами {d — расстояние между пальцами; mx,my — середина; on — это уже именно щипок}
 const pt=e=>{const r=cv.getBoundingClientRect();return{x:cam.x+(e.clientX-r.left)/cam.z,y:cam.y+(e.clientY-r.top)/cam.z}};
-/* Один палец: тап — выбрать/приказ, протяжка — рамка. Второй палец: жест камеры
-   (сдвиг двумя пальцами + щипок для масштаба). Колесо мыши — масштаб на компьютере. */
+/* Правила, чтобы быстрые тапы не путались со щипком:
+   • тап = палец коснулся и отпущен, почти не сдвинувшись (до 18 пикселей);
+   • второй палец сам по себе щипок НЕ запускает — только когда пальцы реально поехали (на 14+ пикселей);
+     пока щипок не начался, первый палец остаётся обычным тапом и приказ не теряется;
+   • пустая рамка (без своих юнитов внутри) выделение не сбрасывает;
+   • когда все пальцы убраны (touchend), список касаний очищается — «застрявших» пальцев не бывает. */
 cv.addEventListener('pointerdown',e=>{
  if(!running)return;
  cv.setPointerCapture(e.pointerId);ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});
- if(ptr.size===2){dr=null;const a=[...ptr.values()];pinch={d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1,mx:(a[0].x+a[1].x)/2,my:(a[0].y+a[1].y)/2};return}
+ if(ptr.size===2){const a=[...ptr.values()];pinch={d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1,mx:(a[0].x+a[1].x)/2,my:(a[0].y+a[1].y)/2,on:0};return}
  if(ptr.size>2||mmHit(e))return;
- dr={...pt(e),on:0};
+ dr={...pt(e),id:e.pointerId,sx:e.clientX,sy:e.clientY,on:0};
 });
 cv.addEventListener('pointermove',e=>{
  if(!ptr.has(e.pointerId))return;ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});
  if(pinch&&ptr.size>=2){
   const a=[...ptr.values()],d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1,mx=(a[0].x+a[1].x)/2,my=(a[0].y+a[1].y)/2;
-  const r=cv.getBoundingClientRect(),wx=cam.x+(pinch.mx-r.left)/cam.z,wy=cam.y+(pinch.my-r.top)/cam.z; // точка мира под пальцами
-  camTo(cam.z*d/pinch.d,wx,wy,mx-r.left,my-r.top);pinch={d,mx,my};return;
+  if(!pinch.on){if(Math.abs(d-pinch.d)<14&&Math.hypot(mx-pinch.mx,my-pinch.my)<14)return;pinch.on=1;dr=null}   // пальцы реально поехали — это щипок
+  const r=cv.getBoundingClientRect(),wx=cam.x+(pinch.mx-r.left)/cam.z,wy=cam.y+(pinch.my-r.top)/cam.z;
+  camTo(cam.z*d/pinch.d,wx,wy,mx-r.left,my-r.top);pinch.d=d;pinch.mx=mx;pinch.my=my;return;
  }
  if(!dr){mmHit(e);return}
- const p=pt(e);dr.x2=p.x;dr.y2=p.y;if(Math.hypot(p.x-dr.x,p.y-dr.y)>14/cam.z)dr.on=1;
+ if(e.pointerId!==dr.id)return;
+ const p=pt(e);dr.x2=p.x;dr.y2=p.y;
+ if(Math.hypot(e.clientX-dr.sx,e.clientY-dr.sy)>18)dr.on=1;
 });
 const upPtr=e=>{ptr.delete(e.pointerId);if(ptr.size<2)pinch=null};
-cv.addEventListener('pointercancel',e=>{upPtr(e);dr=null});
+cv.addEventListener('pointercancel',e=>{upPtr(e);if(dr&&dr.id===e.pointerId)dr=null});
 cv.addEventListener('pointerup',e=>{
  upPtr(e);
- if(!dr)return;const d=dr;dr=null;
+ if(!dr||e.pointerId!==dr.id)return;const d=dr;dr=null;
  if(!d.on){tap(e);return}                              // не протягивали — обычный тап
  const x1=Math.min(d.x,d.x2),x2=Math.max(d.x,d.x2),y1=Math.min(d.y,d.y2),y2=Math.max(d.y,d.y2);
- units.forEach(u=>{if(u.team===me&&!u.base)setSel(u,u.x>=x1&&u.x<=x2&&u.y>=y1&&u.y<=y2)});
+ const inside=units.filter(u=>u.team===me&&!u.base&&!u.bld&&u.hp>0&&u.x>=x1&&u.x<=x2&&u.y>=y1&&u.y<=y2);
+ if(!inside.length)return;                             // пустая рамка — выделение не трогаем
+ units.forEach(u=>{if(u.team===me&&!u.base&&!u.bld)setSel(u,inside.includes(u))});
 });
+['touchend','touchcancel'].forEach(t=>document.addEventListener(t,e=>{if(e.touches.length===0){ptr.clear();pinch=null}},{passive:true}));
 cv.addEventListener('wheel',e=>{
  e.preventDefault();const r=cv.getBoundingClientRect(),p=pt(e);
  camTo(cam.z*(e.deltaY<0?1.15:1/1.15),p.x,p.y,e.clientX-r.left,e.clientY-r.top);
@@ -481,10 +521,11 @@ cv.addEventListener('wheel',e=>{
 /* «Все войска»: выбирает всех твоих бойцов, повторное нажатие — снимает выбор */
 $('fuse').onclick=()=>fuse();
 $('up').onclick=()=>upBase();
+$('bld').onclick=()=>{buildMode=!buildMode;if(buildMode)say('Нажми на свою захваченную точку')};
 $('home').onclick=()=>centerOn(homePos());   // камера к своей базе
 $('all').onclick=()=>{
  if(!running)return;
- const a=units.filter(u=>u.team===me&&!u.base);
+ const a=units.filter(u=>u.team===me&&!u.base&&!u.bld);
  const on=a.some(u=>!u.sel);a.forEach(u=>setSel(u,on));
 };
 
@@ -510,6 +551,7 @@ function hostRoom(k){
    else if(m.t==='b'){const d=F[fac[1]].u[m.i];if(d)d.ritual?ritual(1,d):buy(1,d)}
    else if(m.t==='f')fuse(1);
    else if(m.t==='u')upBase(1);
+   else if(m.t==='p')place(1,m.i);
   });
   c.on('close',()=>{if(running)end(true,'Соперник вышел.')});
  });
@@ -530,7 +572,7 @@ function joinRoom(k){
 function guestGo(m){
  me=1;online=1;P=m.P;W=m.W;H=m.H;fac=m.fac;
  nodes=m.nodes.map(a=>{const q=fl(a[0],a[1]);return{x:q[0],y:q[1],r:a[2],o:null,p:0,core:a[3]}});
- units=[];fx=[];res=[0,0];core=[0,0];time=0;hintT=0;selIds.clear();lvl=[1,1];
+ units=[];fx=[];res=[0,0];core=[0,0];time=0;hintT=0;selIds.clear();lvl=[1,1];buildMode=false;
  mkBtns(fac[1]);$('ov').style.display='none';running=true;ui();fit();camInit();
 }
 /* snap(): хозяин упаковывает мир в компактные массивы и шлёт гостю (не чаще 12 раз/с) */
@@ -538,13 +580,13 @@ function snap(){
  const n=performance.now();if(n-snapT<80)return;snapT=n;
  send({t:'s',l:lvl,tm:time,r:[res[0]|0,res[1]|0],c:[core[0]|0,core[1]|0],h:hintT>0?hint:'',
   n:nodes.map(a=>[a.o,Math.round(a.p*100)/100]),
-  u:units.filter(u=>u.hp>0).map(u=>[u.id,u.team,u.f,Math.round(u.x),Math.round(u.y),Math.round(u.hp),Math.round(u.max),u.r,u.base?1:0,u.gr>0?1:0,u.rit>0?1:0,u.stun>0?1:0,u.fz?1:0]),
+  u:units.filter(u=>u.hp>0).map(u=>[u.id,u.team,u.f,Math.round(u.x),Math.round(u.y),Math.round(u.hp),Math.round(u.max),u.r,u.base?1:0,u.gr>0?1:0,u.rit>0?1:0,u.stun>0?1:0,u.fz?1:0,u.bld||0]),
   x:fx.filter(f=>f.x2!==undefined).map(f=>[Math.round(f.x),Math.round(f.y),Math.round(f.x2),Math.round(f.y2),f.c])});
 }
 /* onSnap(): гость превращает снимок обратно в юнитов/точки/эффекты (с зеркалом координат) */
 function onSnap(m){
  time=m.tm;res=m.r;core=m.c;lvl=m.l;
- units=m.u.map(a=>{const q=fl(a[3],a[4]);return{id:a[0],team:a[1],f:a[2],x:q[0],y:q[1],hp:a[5],max:a[6],r:a[7],base:a[8],gr:a[9],rit:a[10],stun:a[11],fz:a[12],sel:selIds.has(a[0])}});
+ units=m.u.map(a=>{const q=fl(a[3],a[4]);return{id:a[0],team:a[1],f:a[2],x:q[0],y:q[1],hp:a[5],max:a[6],r:a[7],base:a[8],gr:a[9],rit:a[10],stun:a[11],fz:a[12],bld:a[13],sel:selIds.has(a[0])}});
  nodes.forEach((n,i)=>{n.o=m.n[i][0];n.p=m.n[i][1]});
  fx=m.x.map(a=>{const p=fl(a[0],a[1]),q=fl(a[2],a[3]);return{x:p[0],y:p[1],x2:q[0],y2:q[1],ttl:.15,c:a[4]}});
  if(m.h&&m.h!==hint)say(m.h);
