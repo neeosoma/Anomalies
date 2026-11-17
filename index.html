@@ -50,12 +50,12 @@ button:disabled{opacity:.4}
    техно растёт к концу, био падает, маги не зависят от времени.
    u = список юнитов: cost = цена, hp = здоровье, dmg = урон за удар,
    range = дальность, speed = скорость, rate = секунд между ударами.
-   Особенности: count = сколько юнитов за раз, zap = оглушение (сек), hack = угон вражеского юнита на N сек, grow = секунд «вызревания» в коконе, ritual = только через ритуал, ult = ультимативный юнит (нужна база ур.2, один на игрока), bld = здание фракции на точке (турель стреляет, гнездо рождает рой, храм даёт +4 дохода и ускоряет ритуал),
+   Особенности: count = сколько юнитов за раз, zap = оглушение (сек), hack = угон вражеского юнита на N сек, grow = секунд «вызревания» в коконе, ritual = только через ритуал, ult = ультимативный юнит (нужна база ур.2, один на игрока), bld = здание фракции на точке (турель стреляет, гнездо рождает рой, храм даёт +6 дохода и ускоряет ритуал),
    splash = радиус урона по площади, life = время жизни (сек). */
 const F={
  techno:{n:'Нео-Сема',c:'#38bdf8',res:'Энергия',start:100,base:5,node:3,
   curve:t=>Math.min(1.2,.7+t/150),
-  bld:{k:'tur',n:'Турель',s:'Турель',cost:90,hp:320,dmg:10,range:150,rate:1},
+  bld:{k:'tur',n:'Турель',s:'Турель',cost:90,hp:320,dmg:16,range:150,rate:1},
   info:'Дальний бой и быстро растущий доход, но юниты дорогие. Здание: турель. Хакеры угоняют вражеских юнитов на 10 с.',
   u:[{n:'Дрон',cost:32,hp:40,dmg:6,range:110,speed:75,rate:.8},
      {n:'Киборг',cost:60,hp:100,dmg:12,range:120,speed:60,rate:1},
@@ -63,8 +63,8 @@ const F={
      {n:'Мех-Титан',cost:240,hp:420,dmg:30,range:140,speed:45,rate:1.2,ult:1}]},
  bio:{n:'Био-Генезис',c:'#84cc16',res:'Биомасса',start:160,base:6,node:2,regen:.05,slime:2.5,grow:3,
   curve:t=>Math.max(.7,1.4-t/300),
-  bld:{k:'nest',n:'Гнездо',s:'Гнездо',cost:80,hp:260,dmg:0,range:0,rate:1,spawn:14},
-  info:'Дешёвый рой, юниты вызревают в коконах. Лечатся тем быстрее, чем дольше бой, а на своей слизи (у базы и захваченных точек) — ещё быстрее. Кнопка «Сращивание» (выбери двоих) делает гибрида. Доход падает, зато армия живучая. Здание: гнездо, само рождает рой.',
+  bld:{k:'nest',n:'Гнездо',s:'Гнездо',cost:80,hp:260,dmg:0,range:0,rate:1,spawn:10},
+  info:'Дешёвый рой, юниты вызревают в коконах. Лечатся тем быстрее, чем дольше бой, а на своей слизи (у базы и захваченных точек) — ещё быстрее. Кнопка «Сращивание» (выбери двоих) делает гибрида. Доход падает, зато армия живучая. Здание: гнездо само рождает рой каждые 10 с (зелёное кольцо — до следующего).',
   u:[{n:'Рой ×2',cost:20,count:2,hp:26,dmg:5,range:16,speed:115,rate:.7},
      {n:'Хищник',cost:45,hp:90,dmg:12,range:18,speed:100,rate:.9},
      {n:'Бугай',cost:90,hp:260,dmg:20,range:20,speed:55,rate:1.1},
@@ -90,7 +90,7 @@ let W,H,P,units,nodes,fx,res,fac,time,core,running=false,bot,cat,diff=1,ttl='',h
 /* Онлайн: online = идёт ли матч по сети; me = моя команда (0 хозяин, 1 гость); peer/conn = связь;
    mode = что выбирает игрок в меню (solo/host/join); uid = счётчик номеров юнитов;
    selIds = номера выбранных мной юнитов (нужны гостю). */
-let online=0,me=0,peer,conn,mode='solo',uid=0,snapT=0,lvl=[1,1],buildMode=false;
+let online=0,me=0,peer,conn,mode='solo',uid=0,snapT=0,lvl=[1,1],buildMode=false,fog=1,VS=null;
 const UP=180;   /* lvl[t] = уровень базы команды t (1 или 2); UP = цена улучшения */const selIds=new Set();
 /* Камера: cam.x,cam.y = левый верхний угол видимой части мира, cam.z = масштаб;
    DPR = плотность пикселей экрана (для чёткой картинки).
@@ -115,6 +115,7 @@ function menu(title){
  '<p>Сложность бота: '+['Лёгкая','Нормальная','Сложная'].map((n,i)=>'<button onclick="diff='+i+';menu()" style="padding:6px 10px;'+(diff==i?'border:2px solid #ffd54a':'')+'">'+n+'</button>').join(' ')+'</p>'+
  '<p>Онлайн 1v1: <button onclick="setMode(\'host\')">Создать комнату</button> <button onclick="setMode(\'join\')">Войти по коду</button></p>'+
  '<p><button onclick="simTest(10)">Тест баланса: боты играют сами</button></p>'+
+ '<p><button onclick="fog=!fog;menu()">Туман войны: '+(fog?'включён':'выключен')+'</button></p>'+
  (mode!=='solo'?'<p><b>'+(mode=='host'?'Создаёшь комнату':'Входишь в комнату '+joinCode)+' — выбери фракцию</b> <button onclick="mode=\'solo\';menu()">отмена</button></p>':'')+
  Object.keys(F).map(k=>'<button class="fc" style="border-color:'+F[k].c+'" onclick="pick(\''+k+'\')"><b>'+F[k].n+'</b><br>'+F[k].info+'</button>').join('')+'</div>';
 }
@@ -135,12 +136,40 @@ function start(fp,fp2){
  let p=pos(.08,.5),q=pos(.92,.5);
  units.push(mk(0,p.x,p.y,{hp:5000,dmg:24,range:150,speed:0,rate:1},{r:28,base:1}));
  units.push(mk(1,q.x,q.y,{hp:5000,dmg:24,range:150,speed:0,rate:1},{r:28,base:1}));
- nodes=[[.31,.25],[.31,.75],[.69,.25],[.69,.75],[.5,.5]].map((a,i)=>{
-  const s=pos(a[0],a[1]);return{x:s.x,y:s.y,r:i==4?44:32,o:null,p:0,core:i==4}});
+ nodes=genNodes(pos);fgc.width=Math.ceil(W/FSC);fgc.height=Math.ceil(H/FSC);
  // кнопки найма юнитов твоей фракции
  $('buy').innerHTML='';
  mkBtns(fp);
  $('ov').style.display='none';running=true;ui();fit();camInit();
+}
+/* ===== ТУМАН ВОЙНЫ =====
+   sources(t) — «глаза» команды t: [x, y, радиус обзора] от каждого её юнита (230), здания (260),
+   базы (360) и захваченной точки (210). seenBy(S,x,y) — попадает ли точка в чей-то обзор.
+   Чужие юниты вне обзора не рисуются и в онлайне даже не пересылаются сопернику (хозяин
+   фильтрует снимок). Для точек запоминается последнее увиденное состояние (lo, lp).
+   fgc — маленький холст тумана (в 8 раз меньше карты): тёмная заливка с вырезанными кругами обзора;
+   при растяжении края получаются мягкими. fog=0 — туман выключен (кнопка в меню). */
+const fgc=document.createElement('canvas'),fgx=fgc.getContext('2d'),FSC=8;
+function sources(t){
+ const a=[];units.forEach(u=>{if(u.team===t&&u.hp>0)a.push([u.x,u.y,u.base?360:u.bld?260:230])});
+ nodes.forEach(n=>{if(n.o===t)a.push([n.x,n.y,210])});return a;
+}
+const seenBy=(S,x,y)=>S.some(q=>(q[0]-x)**2+(q[1]-y)**2<q[2]*q[2]);
+/* ===== СЛУЧАЙНЫЕ ЗЕРКАЛЬНЫЕ ТОЧКИ =====
+   genNodes(pos): 2 пары точек + Ядро в центре. Точка слева (a,b) получает «двойника» справа
+   в (1-a,1-b) — зеркально через центр, поэтому у обоих игроков одинаковое расстояние до баз
+   и друг до друга. Пробуем случайные места, пока точки не окажутся достаточно далеко от баз,
+   Ядра и друг от друга; если не вышло — старая расстановка. */
+function genNodes(pos){
+ const bs=[pos(.08,.5),pos(.92,.5)],cr=pos(.5,.5);
+ const mkn=(q,c)=>({x:q.x,y:q.y,r:c?44:32,o:null,p:0,core:c,lo:null,lp:0});
+ for(let k=0;k<400;k++){
+  const pts=[];
+  [[.12,.42],[.58,.88]].forEach(r=>{const a=.2+Math.random()*.2,b=r[0]+Math.random()*(r[1]-r[0]);pts.push(pos(a,b),pos(1-a,1-b))});
+  if(pts.every((q,i)=>dist(q,bs[0])>330&&dist(q,bs[1])>330&&dist(q,cr)>250&&pts.every((o,j)=>i===j||dist(q,o)>300)))
+   return[...pts.map(q=>mkn(q,0)),mkn(cr,1)];
+ }
+ return[[.31,.25],[.31,.75],[.69,.25],[.69,.75]].map(a=>mkn(pos(a[0],a[1]),0)).concat([mkn(cr,1)]);
 }
 /* ===== КАМЕРА И МИНИ-КАРТА =====
    zMin() — самый далёкий масштаб (вся карта на экране); clampCam() — не даёт камере
@@ -167,7 +196,7 @@ function mini(){
  const m=mmRect();g.setTransform(DPR,0,0,DPR,0,0);   // рисуем в пикселях экрана
  g.fillStyle='rgba(0,0,0,.55)';g.fillRect(m.x,m.y,m.w,m.h);
  nodes.forEach(n=>{g.fillStyle=n.o===null?'#777777':F[fac[n.o]].c;g.fillRect(m.x+n.x*m.s-2,m.y+n.y*m.s-2,4,4)});
- units.forEach(u=>{if(u.hp<=0)return;g.fillStyle=u.team===me?'#ffffff':'#f43f5e';const q=u.base?4:2;g.fillRect(m.x+u.x*m.s-q/2,m.y+u.y*m.s-q/2,q,q)});
+ units.forEach(u=>{if(u.hp<=0||(VS&&u.team!==me&&!u.base&&!seenBy(VS,u.x,u.y)))return;g.fillStyle=u.team===me?'#ffffff':'#f43f5e';const q=u.base?4:2;g.fillRect(m.x+u.x*m.s-q/2,m.y+u.y*m.s-q/2,q,q)});
  g.strokeStyle='#ffd54a';g.lineWidth=1;g.strokeRect(m.x+cam.x*m.s,m.y+cam.y*m.s,cv.clientWidth/cam.z*m.s,cv.clientHeight/cam.z*m.s);
 }
 /* mkBtns(): рисует кнопки найма для фракции fp. act(i): нажата кнопка номер i —
@@ -256,8 +285,8 @@ function canUlt(t,d){
    Кнопка «Здание» включает режим стройки: нажми на свою захваченную точку (кроме Ядра) — там
    вырастет здание фракции (3 секунды в «коконе»). На точке одно здание. place(t,i) строит команде t
    на точке номер i. Здание — юнит без движения (bld = вид, nd = его точка): враги могут его
-   атаковать. Потеряешь точку — здание разрушится. Турель стреляет; гнездо (spw) каждые 14 с
-   рождает бесплатный рой; храм даёт +4 к доходу и вдвое ускоряет ритуал рядом (sanctNear). */
+   атаковать. Потеряешь точку — здание разрушится. Турель стреляет; гнездо (spw) каждые 10 с
+   рождает бесплатный рой; храм даёт +6 к доходу и вдвое ускоряет ритуал рядом (sanctNear). */
 function place(t,i){
  const n=nodes[i],b=F[fac[t]].bld;
  if(!n||n.core||n.o!==t||res[t]<b.cost||units.some(u=>u.bld&&u.nd===n&&u.hp>0)){if(t===me)say('Нужна своя свободная точка');return}
@@ -294,7 +323,7 @@ function hit(u,t){
 /* income(): доход команды t в секунду = (база + точки×бонус) × кривая времени */
 function income(t){
  const f=F[fac[t]],k=nodes.filter(n=>n.o===t).length;
- return(f.base+k*f.node+units.filter(b=>b.team===t&&b.bld==='sanct'&&b.hp>0&&!(b.gr>0)).length*4)*f.curve(time)*(t&&!online?[.8,1,1.3][diff]:1); // у бота доход зависит от сложности
+ return(f.base+k*f.node+units.filter(b=>b.team===t&&b.bld==='sanct'&&b.hp>0&&!(b.gr>0)).length*6)*f.curve(time)*(t&&!online?[.8,1,1.3][diff]:1); // у бота доход зависит от сложности
 }
 
 /* onSlime(): юнит стоит на «слизи» — в 180 пикселях от своей базы или у своей захваченной точки.
@@ -305,12 +334,16 @@ function onSlime(u){return dist(u,units[u.team])<180||nodes.some(n=>n.o===u.team
    армия большая — штурм базы врага; иначе — захват ближайшей чужой точки. */
 function botThink(t,dt){
  const B=bots[t];B.buy-=dt;B.order-=dt;
- if(lvl[t]<2&&time>150&&res[t]>=UP+80)upBase(t);   // бот улучшает базу после 2:30
  if(B.buy<=0){B.buy=[3.5,2.5,1.8][diff];
   const bd=F[fac[t]].bld,fn=nodes.findIndex(n=>!n.core&&n.o===t&&!units.some(u=>u.bld&&u.nd===n&&u.hp>0));
-  if(fn>=0&&time>90&&res[t]>=bd.cost+40)place(t,fn);   // бот строит здание на свободной своей точке
-  const o=F[fac[t]].u.filter(d=>d.cost<=res[t]&&canUlt(t,d));
-  if(o.length)buy(t,Math.random()<.6?o[o.length-1]:o[Math.random()*o.length|0]);
+  const army=units.filter(u=>u.team===t&&!u.base&&!u.bld).length;
+  let save=0;                                          // сколько бот копит: сначала здание (с 1:30), потом улучшение базы (с 2:30)
+  if(fn>=0&&time>90)save=bd.cost;else if(lvl[t]<2&&time>150)save=UP;
+  if(save&&res[t]>=save){if(save===UP)upBase(t);else place(t,fn)}
+  else if(!(save&&army>=5)){                           // копит, только если армия уже есть
+   const o=F[fac[t]].u.filter(d=>d.cost<=res[t]&&canUlt(t,d));
+   if(o.length)buy(t,Math.random()<.6?o[o.length-1]:o[Math.random()*o.length|0]);
+  }
  }
  if(B.order<=0){B.order=5;
   const army=units.filter(u=>u.team===t&&!u.base&&!u.bld);
@@ -383,6 +416,9 @@ function draw(){
  g.setTransform(1,0,0,1,0,0);g.fillStyle='#0b0d12';g.fillRect(0,0,cv.width,cv.height);   // фон за краем мира
  g.setTransform(cam.z*DPR,0,0,cam.z*DPR,-cam.x*cam.z*DPR,-cam.y*cam.z*DPR);              // включаем камеру
  g.fillStyle='#10131a';g.fillRect(0,0,W,H);
+ VS=fog?sources(me):null;                               // обзор моей команды на этот кадр
+ const real=nodes.map(n=>[n.o,n.p]);                    // хозяин: невидимые точки показываем по последним данным
+ if(VS&&!guest())nodes.forEach(n=>{if(n.o===me||seenBy(VS,n.x,n.y)){n.lo=n.o;n.lp=n.p}else{n.o=n.lo;n.p=n.lp}});
  [0,1].forEach(t=>{                                    // зелёная «слизь» био: зоны быстрого лечения
   if(!F[fac[t]].slime)return;const c=F[fac[t]].c+'18',b=units.find(u=>u.base&&u.team===t);
   if(b){g.beginPath();g.arc(b.x,b.y,180,0,7);g.fillStyle=c;g.fill()}
@@ -401,10 +437,15 @@ function draw(){
   g.strokeStyle=n.p>0?F[fac[0]].c:F[fac[1]].c;g.stroke();
   if(n.core){g.fillStyle='#fff';g.font='12px sans-serif';g.textAlign='center';g.fillText(time<240?'ЯДРО '+fmt(240-time):'ЯДРО',n.x,n.y+4)}
  });
+ if(VS){fgx.globalCompositeOperation='source-over';fgx.fillStyle='rgba(4,6,10,.7)';fgx.fillRect(0,0,fgc.width,fgc.height);
+  fgx.globalCompositeOperation='destination-out';fgx.fillStyle='#000';
+  VS.forEach(q=>{fgx.beginPath();fgx.arc(q[0]/FSC,q[1]/FSC,q[2]/FSC,0,7);fgx.fill()});
+  g.imageSmoothingEnabled=true;g.drawImage(fgc,0,0,W,H)}   // тёмная пелена с вырезанным обзором
  if(buildMode)nodes.forEach(n=>{                        // подсветка точек, куда можно построить
   if(!n.core&&n.o===me&&!units.some(u=>u.bld&&dist(u,n)<8)){g.beginPath();g.arc(n.x,n.y,n.r+10,0,7);g.strokeStyle='#ffd54a';g.lineWidth=3;g.stroke()}});
  units.forEach(u=>{                                   // юниты и базы
   if(u.hp<=0)return;
+  if(VS&&u.team!==me&&!u.base&&!seenBy(VS,u.x,u.y))return;   // чужие в тумане не видны
   const c=F[u.f].c,r=u.r;
   g.beginPath();
   if(u.base||u.f=='techno')g.rect(u.x-r,u.y-r,r*2,r*2);
@@ -412,7 +453,8 @@ function draw(){
   else{g.moveTo(u.x,u.y-r-2);g.lineTo(u.x+r,u.y+r);g.lineTo(u.x-r,u.y+r);g.closePath()}
   g.globalAlpha=u.gr>0?.4:1;g.fillStyle=c;g.fill();g.globalAlpha=1;   // кокон полупрозрачный
   if(u.rit>0){g.beginPath();g.arc(u.x,u.y,r+8,0,7);g.strokeStyle=c;g.lineWidth=2;g.stroke()} // кольцо ритуала
-  if(u.bld){g.fillStyle='#fff';g.font='12px sans-serif';g.textAlign='center';g.fillText(u.bld==='tur'?'Т':u.bld==='nest'?'Г':'С',u.x,u.y+4)}
+  if(u.bld){g.fillStyle='#fff';g.font='12px sans-serif';g.textAlign='center';g.fillText(u.bld==='tur'?'Т':u.bld==='nest'?'Г':'С',u.x,u.y+4);
+   if(u.spw&&!(u.gr>0)){g.beginPath();g.arc(u.x,u.y,r+6,-1.57,-1.57+6.28*(1-u.sp/u.spw));g.strokeStyle='#84cc16';g.lineWidth=2;g.stroke()}}   // кольцо до следующего роя
   if(u.team===me){g.strokeStyle='#fff';g.lineWidth=2;g.stroke()}else{g.strokeStyle='#f43f5e';g.lineWidth=2;g.stroke()} // свои — белая кайма, чужие — красная   // твои — с белой каймой
   if(u.sel){g.beginPath();g.arc(u.x,u.y,r+5,0,7);g.strokeStyle='#ffd54a';g.lineWidth=2;g.stroke()}
   if(u.stun>0){g.fillStyle='#ffd54a';g.fillText('⚡',u.x,u.y-r-8)}
@@ -421,11 +463,13 @@ function draw(){
   if(u.base){g.fillStyle='#fff';g.font='11px sans-serif';g.textAlign='center';g.fillText(u.team===me?'ТЫ':online?'ВРАГ':'БОТ',u.x,u.y+4)}
  });
  fx.forEach(f=>{                                      // вспышки выстрелов и метки приказов
+  if(VS&&f.x2!==undefined&&!seenBy(VS,f.x,f.y)&&!seenBy(VS,f.x2,f.y2))return;
   g.globalAlpha=Math.min(1,f.ttl*4);g.strokeStyle=f.c||'#fff';g.lineWidth=2;g.beginPath();
   if(f.x2===undefined)g.arc(f.x,f.y,(.4-f.ttl)*60,0,7);else{g.moveTo(f.x,f.y);g.lineTo(f.x2,f.y2)}
   g.stroke();g.globalAlpha=1;
  });
  mini();   // мини-карта в углу
+ nodes.forEach((n,i)=>{n.o=real[i][0];n.p=real[i][1]});   // вернуть настоящие данные точек
 }
 
 /* ===== БЛОК 11. ПАНЕЛЬ СВЕРХУ И КНОПКИ =====
@@ -466,7 +510,7 @@ function tap(e){
  }
  const mine=units.find(u=>u.team===me&&!u.base&&!u.bld&&u.hp>0&&dist(u,p)<22/Math.min(1,cam.z));
  if(mine){setSel(mine,!mine.sel);return}
- const foe=units.find(u=>u.team!==me&&u.hp>0&&dist(u,p)<u.r+14/Math.min(1,cam.z));
+ const foe=units.find(u=>u.team!==me&&u.hp>0&&(u.base||!VS||seenBy(VS,u.x,u.y))&&dist(u,p)<u.r+14/Math.min(1,cam.z));
  order(units.filter(u=>u.sel&&u.team===me).map(u=>u.id),foe?foe.id:0,p.x,p.y);
  fx.push({x:p.x,y:p.y,ttl:.4});                       // метка на месте тапа
 }
@@ -546,7 +590,7 @@ function hostRoom(k){
  peer.on('error',e=>ovMsg('Ошибка связи: '+e.type));
  peer.on('connection',c=>{conn=c;
   c.on('data',m=>{
-   if(m.t==='hi'){online=1;start(k,m.f);send({t:'go',W,H,P,fac,nodes:nodes.map(n=>[n.x,n.y,n.r,n.core])})}
+   if(m.t==='hi'){online=1;start(k,m.f);send({t:'go',W,H,P,fog,fac,nodes:nodes.map(n=>[n.x,n.y,n.r,n.core])})}
    else if(m.t==='o')doOrder(1,m.ids,m.fid,m.x,m.y);
    else if(m.t==='b'){const d=F[fac[1]].u[m.i];if(d)d.ritual?ritual(1,d):buy(1,d)}
    else if(m.t==='f')fuse(1);
@@ -570,24 +614,24 @@ function joinRoom(k){
 }
 /* guestGo(): гость получил карту и фракции — готовит экран */
 function guestGo(m){
- me=1;online=1;P=m.P;W=m.W;H=m.H;fac=m.fac;
+ me=1;online=1;P=m.P;W=m.W;H=m.H;fog=m.fog;fgc.width=Math.ceil(W/FSC);fgc.height=Math.ceil(H/FSC);fac=m.fac;
  nodes=m.nodes.map(a=>{const q=fl(a[0],a[1]);return{x:q[0],y:q[1],r:a[2],o:null,p:0,core:a[3]}});
  units=[];fx=[];res=[0,0];core=[0,0];time=0;hintT=0;selIds.clear();lvl=[1,1];buildMode=false;
  mkBtns(fac[1]);$('ov').style.display='none';running=true;ui();fit();camInit();
 }
 /* snap(): хозяин упаковывает мир в компактные массивы и шлёт гостю (не чаще 12 раз/с) */
 function snap(){
- const n=performance.now();if(n-snapT<80)return;snapT=n;
+ const n=performance.now();if(n-snapT<80)return;snapT=n;const S1=fog?sources(1):null;   // что видит гость
  send({t:'s',l:lvl,tm:time,r:[res[0]|0,res[1]|0],c:[core[0]|0,core[1]|0],h:hintT>0?hint:'',
-  n:nodes.map(a=>[a.o,Math.round(a.p*100)/100]),
-  u:units.filter(u=>u.hp>0).map(u=>[u.id,u.team,u.f,Math.round(u.x),Math.round(u.y),Math.round(u.hp),Math.round(u.max),u.r,u.base?1:0,u.gr>0?1:0,u.rit>0?1:0,u.stun>0?1:0,u.fz?1:0,u.bld||0]),
-  x:fx.filter(f=>f.x2!==undefined).map(f=>[Math.round(f.x),Math.round(f.y),Math.round(f.x2),Math.round(f.y2),f.c])});
+  n:nodes.map(a=>(!S1||a.o===1||seenBy(S1,a.x,a.y))?[a.o,Math.round(a.p*100)/100]:0),
+  u:units.filter(u=>u.hp>0&&(!S1||u.team===1||u.base||seenBy(S1,u.x,u.y))).map(u=>[u.id,u.team,u.f,Math.round(u.x),Math.round(u.y),Math.round(u.hp),Math.round(u.max),u.r,u.base?1:0,u.gr>0?1:0,u.rit>0?1:0,u.stun>0?1:0,u.fz?1:0,u.bld||0]),
+  x:fx.filter(f=>f.x2!==undefined&&(!S1||seenBy(S1,f.x,f.y)||seenBy(S1,f.x2,f.y2))).map(f=>[Math.round(f.x),Math.round(f.y),Math.round(f.x2),Math.round(f.y2),f.c])});
 }
 /* onSnap(): гость превращает снимок обратно в юнитов/точки/эффекты (с зеркалом координат) */
 function onSnap(m){
  time=m.tm;res=m.r;core=m.c;lvl=m.l;
  units=m.u.map(a=>{const q=fl(a[3],a[4]);return{id:a[0],team:a[1],f:a[2],x:q[0],y:q[1],hp:a[5],max:a[6],r:a[7],base:a[8],gr:a[9],rit:a[10],stun:a[11],fz:a[12],bld:a[13],sel:selIds.has(a[0])}});
- nodes.forEach((n,i)=>{n.o=m.n[i][0];n.p=m.n[i][1]});
+ nodes.forEach((n,i)=>{const d=m.n[i];if(d){n.o=d[0];n.p=d[1]}});   // не видим точку — помним прежнее
  fx=m.x.map(a=>{const p=fl(a[0],a[1]),q=fl(a[2],a[3]);return{x:p[0],y:p[1],x2:q[0],y2:q[1],ttl:.15,c:a[4]}});
  if(m.h&&m.h!==hint)say(m.h);
 }
