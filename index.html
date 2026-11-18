@@ -57,15 +57,15 @@ const F={
   curve:t=>Math.min(1.2,.7+t/150),
   bld:{k:'tur',n:'Турель',s:'Турель',cost:90,hp:320,dmg:16,range:150,rate:1},
   info:'Дальний бой и быстро растущий доход, но юниты дорогие. Здание: турель. Хакеры угоняют вражеских юнитов на 10 с.',
-  u:[{n:'Дрон',cost:32,hp:40,dmg:6,range:110,speed:75,rate:.8},
+  u:[{n:'Дрон',cost:30,hp:40,dmg:6,range:110,speed:75,rate:.8},
      {n:'Киборг',cost:60,hp:100,dmg:12,range:120,speed:60,rate:1},
      {n:'Хакер',cost:80,hp:60,dmg:4,range:150,speed:60,rate:5,hack:10},
      {n:'Мех-Титан',cost:240,hp:420,dmg:30,range:140,speed:45,rate:1.2,ult:1}]},
  bio:{n:'Био-Генезис',c:'#84cc16',res:'Биомасса',start:160,base:6,node:2,regen:.05,slime:2.5,grow:3,
   curve:t=>Math.max(.7,1.4-t/300),
-  bld:{k:'nest',n:'Гнездо',s:'Гнездо',cost:80,hp:260,dmg:0,range:0,rate:1,spawn:10},
-  info:'Дешёвый рой, юниты вызревают в коконах. Лечатся тем быстрее, чем дольше бой, а на своей слизи (у базы и захваченных точек) — ещё быстрее. Кнопка «Сращивание» (выбери двоих) делает гибрида. Доход падает, зато армия живучая. Здание: гнездо само рождает рой каждые 10 с (зелёное кольцо — до следующего).',
-  u:[{n:'Рой ×2',cost:20,count:2,hp:26,dmg:5,range:16,speed:115,rate:.7},
+  bld:{k:'nest',n:'Гнездо',s:'Гнездо',cost:80,hp:260,dmg:0,range:0,rate:1,spawn:13},
+  info:'Дешёвый рой, юниты вызревают в коконах. Лечатся тем быстрее, чем дольше бой, а на своей слизи (у базы и захваченных точек) — ещё быстрее. Кнопка «Сращивание» (выбери двоих) делает гибрида. Доход падает, зато армия живучая. Здание: гнездо само рождает рой каждые 13 с (зелёное кольцо — до следующего).',
+  u:[{n:'Рой ×2',cost:20,count:2,hp:24,dmg:5,range:16,speed:115,rate:.7},
      {n:'Хищник',cost:45,hp:90,dmg:12,range:18,speed:100,rate:.9},
      {n:'Бугай',cost:90,hp:260,dmg:20,range:20,speed:55,rate:1.1},
      {n:'Левиафан',cost:240,hp:560,dmg:26,range:24,speed:50,rate:1.1,splash:45,ult:1}]},
@@ -163,13 +163,13 @@ const seenBy=(S,x,y)=>S.some(q=>(q[0]-x)**2+(q[1]-y)**2<q[2]*q[2]);
 function genNodes(pos){
  const bs=[pos(.08,.5),pos(.92,.5)],cr=pos(.5,.5);
  const mkn=(q,c)=>({x:q.x,y:q.y,r:c?44:32,o:null,p:0,core:c,lo:null,lp:0});
- for(let k=0;k<400;k++){
+ for(let k=0;k<600;k++){
   const pts=[];
-  [[.12,.42],[.58,.88]].forEach(r=>{const a=.2+Math.random()*.2,b=r[0]+Math.random()*(r[1]-r[0]);pts.push(pos(a,b),pos(1-a,1-b))});
+  for(let j=0;j<2;j++){const a=.12+Math.random()*.76,b=.08+Math.random()*.84;pts.push(pos(a,b),pos(1-a,1-b))}   // любое место поля + зеркальный двойник
   if(pts.every((q,i)=>dist(q,bs[0])>330&&dist(q,bs[1])>330&&dist(q,cr)>250&&pts.every((o,j)=>i===j||dist(q,o)>300)))
    return[...pts.map(q=>mkn(q,0)),mkn(cr,1)];
  }
- return[[.31,.25],[.31,.75],[.69,.25],[.69,.75]].map(a=>mkn(pos(a[0],a[1]),0)).concat([mkn(cr,1)]);
+ return[[.31,.25],[.31,.75],[.69,.25],[.69,.75]].map(a=>mkn(pos(a[0],a[1]),0)).concat([mkn(cr,1)]);   // запасной вариант
 }
 /* ===== КАМЕРА И МИНИ-КАРТА =====
    zMin() — самый далёкий масштаб (вся карта на экране); clampCam() — не даёт камере
@@ -195,7 +195,7 @@ function mmHit(e){
 function mini(){
  const m=mmRect();g.setTransform(DPR,0,0,DPR,0,0);   // рисуем в пикселях экрана
  g.fillStyle='rgba(0,0,0,.55)';g.fillRect(m.x,m.y,m.w,m.h);
- nodes.forEach(n=>{g.fillStyle=n.o===null?'#777777':F[fac[n.o]].c;g.fillRect(m.x+n.x*m.s-2,m.y+n.y*m.s-2,4,4)});
+ nodes.forEach(n=>{if(!n.core)return;g.fillStyle=n.o===null?'#777777':F[fac[n.o]].c;g.fillRect(m.x+n.x*m.s-3,m.y+n.y*m.s-3,6,6)});   // на мини-карте видно только Ядро
  units.forEach(u=>{if(u.hp<=0||(VS&&u.team!==me&&!u.base&&!seenBy(VS,u.x,u.y)))return;g.fillStyle=u.team===me?'#ffffff':'#f43f5e';const q=u.base?4:2;g.fillRect(m.x+u.x*m.s-q/2,m.y+u.y*m.s-q/2,q,q)});
  g.strokeStyle='#ffd54a';g.lineWidth=1;g.strokeRect(m.x+cam.x*m.s,m.y+cam.y*m.s,cv.clientWidth/cam.z*m.s,cv.clientHeight/cam.z*m.s);
 }
@@ -285,7 +285,7 @@ function canUlt(t,d){
    Кнопка «Здание» включает режим стройки: нажми на свою захваченную точку (кроме Ядра) — там
    вырастет здание фракции (3 секунды в «коконе»). На точке одно здание. place(t,i) строит команде t
    на точке номер i. Здание — юнит без движения (bld = вид, nd = его точка): враги могут его
-   атаковать. Потеряешь точку — здание разрушится. Турель стреляет; гнездо (spw) каждые 10 с
+   атаковать. Потеряешь точку — здание разрушится. Турель стреляет; гнездо (spw) каждые 13 с
    рождает бесплатный рой; храм даёт +6 к доходу и вдвое ускоряет ритуал рядом (sanctNear). */
 function place(t,i){
  const n=nodes[i],b=F[fac[t]].bld;
@@ -378,7 +378,8 @@ function update(dt){
   if(n.p>=1)n.o=0;if(n.p<=-1)n.o=1;
  });
  units.forEach(b=>{if(b.bld&&b.hp>0&&b.nd.o!==b.team)b.hp=0});   // потеряли точку — здание разрушено
- const c=nodes[4];                                    // 3) таймер Ядра
+ const c=nodes[nodes.length-1];   // Ядро всегда последнее в списке точек
+                                     // 3) таймер Ядра
  core[0]=c.o===0?core[0]+dt:0;core[1]=c.o===1?core[1]+dt:0;
 
  units.forEach(u=>{                                   // 4) поведение каждого юнита
